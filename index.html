@@ -1,0 +1,2254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>MaestroGestão - Sistema Pro para Professores de Música</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .sidebar-link.active { background-color: #2563eb; color: white; }
+
+        /* ── MOBILE: sidebar oculta por padrão ── */
+        @media (max-width: 767px) {
+            #sidebar {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                z-index: 200;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                width: 240px;
+            }
+            #sidebar.open { transform: translateX(0); }
+            #sidebar-overlay {
+                display: none;
+                position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199;
+            }
+            #sidebar-overlay.open { display: block; }
+            #topbar { display: flex; }
+            #main-area { padding-top: 56px; }
+        }
+        @media (min-width: 768px) {
+            #topbar { display: none; }
+            #sidebar { transform: none !important; position: relative; }
+        }
+
+        /* Braço do violão */
+        .fretboard-container {
+            position: relative; width: 150px; height: 160px; background: #fff;
+        }
+        .fret-line { position: absolute; left: 0; right: 0; height: 1px; background-color: #94a3b8; }
+        .string-line { position: absolute; top: 0; bottom: 0; width: 1px; background-color: #64748b; }
+        .string-line-nut { position: absolute; left: 0; right: 0; height: 4px; background-color: #1e293b; top: 0; }
+        .fret-note-dot {
+            position: absolute; width: 22px; height: 22px; border-radius: 50%;
+            background-color: #1e293b; color: white; font-size: 11px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; transform: translate(-50%, -50%); z-index: 30; cursor: pointer;
+        }
+        .click-trigger {
+            position: absolute; width: 24px; height: 32px;
+            transform: translate(-50%, -50%); z-index: 20; cursor: pointer; border-radius: 4px;
+        }
+        .click-trigger:hover { background-color: rgba(59,130,246,0.2); }
+
+        /* Accordion histórico */
+        .aula-accordion-body { display: none; }
+        .aula-accordion-body.open { display: block; }
+        .aula-accordion-header { cursor: pointer; user-select: none; }
+        .aula-accordion-header:hover { background-color: #f1f5f9; }
+        .aula-accordion-chevron { transition: transform 0.2s ease; }
+        .aula-accordion-chevron.open { transform: rotate(180deg); }
+
+        /* Dashboard */
+        .dash-stat-card {
+            background: white; border: 1px solid #e5e7eb; border-radius: 12px;
+            padding: 20px; display: flex; align-items: center; justify-content: space-between;
+        }
+        .dash-quick-btn {
+            background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+            padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+            cursor: pointer; transition: all 0.15s; text-align: left; width: 100%; font-size: 14px;
+        }
+        .dash-quick-btn:hover { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+        /* Badge status */
+        .mapa-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
+            cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+        }
+        .mapa-badge:hover { opacity: 0.75; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+
+<!-- Topbar mobile -->
+<div id="topbar" class="fixed top-0 left-0 right-0 z-150 bg-slate-900 text-white h-14 flex items-center px-4 gap-3 shadow-md">
+    <button onclick="toggleSidebar()" class="text-white text-xl p-1"><i class="fa-solid fa-bars"></i></button>
+    <span class="font-bold tracking-wider flex items-center gap-2 text-base">
+        <i class="fa-solid fa-music text-blue-400"></i> MaestroGestão
+    </span>
+</div>
+<div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<div class="flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <div id="sidebar" class="w-60 bg-slate-900 text-white flex flex-col flex-shrink-0">
+        <div class="p-5 text-xl font-bold tracking-wider border-b border-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-music text-blue-400"></i> MaestroGestão
+        </div>
+        <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+            <button onclick="switchTab('inicio')" id="btn-tab-inicio" class="sidebar-link w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 hover:bg-slate-800 transition">
+                <i class="fa-solid fa-house"></i> Início
+            </button>
+            <button onclick="switchTab('alunos')" id="btn-tab-alunos" class="sidebar-link w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 hover:bg-slate-800 transition">
+                <i class="fa-solid fa-users"></i> Cadastro de Alunos
+            </button>
+            <button onclick="switchTab('relatorio')" id="btn-tab-relatorio" class="sidebar-link w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 hover:bg-slate-800 transition">
+                <i class="fa-solid fa-file-pen"></i> Relatório de Aula
+            </button>
+            <button onclick="switchTab('dashboard')" id="btn-tab-dashboard" class="sidebar-link w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 hover:bg-slate-800 transition">
+                <i class="fa-solid fa-chart-pie"></i> Dashboard
+            </button>
+        </nav>
+        <div class="p-4 border-t border-slate-800 text-xs text-slate-400 text-center">
+            v2.0 — Dados por aluno + Mobile Ready
+        </div>
+    </div>
+
+    <!-- CONTEÚDO -->
+    <div id="main-area" class="flex-1 flex flex-col overflow-y-auto bg-slate-50">
+
+        <!-- TELA INICIAL -->
+        <div id="tab-inicio" class="tab-content p-4 md:p-8 max-w-5xl mx-auto w-full space-y-6 md:space-y-8">
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 md:p-8 text-white shadow-lg">
+                <h1 class="text-2xl md:text-3xl font-bold mb-2">Bem-vindo de volta, Well!</h1>
+                <p class="text-indigo-100 text-sm md:text-base">v2.0: Dados individuais por aluno, acervo com status clicável, planejamento correto e interface mobile.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+                <button onclick="switchTab('alunos')" class="bg-white p-5 rounded-xl shadow-xs border border-gray-100 hover:shadow-md transition text-left flex flex-col justify-between h-36 md:h-40 group">
+                    <div class="bg-blue-100 text-blue-600 w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center text-lg md:text-xl group-hover:bg-blue-600 group-hover:text-white transition"><i class="fa-solid fa-folder-open"></i></div>
+                    <div><span class="block text-lg md:text-xl font-bold text-gray-900">📁 Cadastro de Alunos</span><span class="text-xs text-gray-500">Fichas, históricos e mapas de conhecimento.</span></div>
+                </button>
+                <button onclick="switchTab('relatorio')" class="bg-white p-5 rounded-xl shadow-xs border border-gray-100 hover:shadow-md transition text-left flex flex-col justify-between h-36 md:h-40 group">
+                    <div class="bg-green-100 text-green-600 w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center text-lg md:text-xl group-hover:bg-green-600 group-hover:text-white transition"><i class="fa-solid fa-pen-to-square"></i></div>
+                    <div><span class="block text-lg md:text-xl font-bold text-gray-900">📝 Relatório de Aula</span><span class="text-xs text-gray-500">Monte guias semanais com diagramas de acordes.</span></div>
+                </button>
+                <button onclick="switchTab('dashboard')" class="bg-white p-5 rounded-xl shadow-xs border border-gray-100 hover:shadow-md transition text-left flex flex-col justify-between h-36 md:h-40 group">
+                    <div class="bg-purple-100 text-purple-600 w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center text-lg md:text-xl group-hover:bg-purple-600 group-hover:text-white transition"><i class="fa-solid fa-chart-line"></i></div>
+                    <div><span class="block text-lg md:text-xl font-bold text-gray-900">📊 Dashboard</span><span class="text-xs text-gray-500">Estatísticas e crescimento da sua turma.</span></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- LISTAGEM DE ALUNOS -->
+        <div id="tab-alunos" class="tab-content p-4 md:p-8 max-w-6xl mx-auto w-full hidden space-y-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2"><i class="fa-solid fa-users text-blue-600"></i> Gestão de Alunos</h2>
+                <button onclick="openModalAluno()" class="bg-blue-600 text-white px-3 py-2 md:px-4 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-plus"></i> <span class="hidden md:inline">Novo Aluno</span><span class="md:hidden">Novo</span>
+                </button>
+            </div>
+            <div class="flex gap-2 border-b border-gray-200">
+                <button id="aba-alunos-ativos" onclick="trocarAbaAlunos('ativos')" class="px-4 py-2 text-sm font-semibold border-b-2 border-blue-600 text-blue-700 flex items-center gap-2">
+                    <i class="fa-solid fa-user-check"></i> Alunos ativos <span id="contador-alunos-ativos" class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">0</span>
+                </button>
+                <button id="aba-alunos-arquivados" onclick="trocarAbaAlunos('arquivados')" class="px-4 py-2 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+                    <i class="fa-solid fa-box-archive"></i> Alunos arquivados <span id="contador-alunos-arquivados" class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">0</span>
+                </button>
+            </div>
+            <div id="lista-alunos-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6"></div>
+        </div>
+
+        <!-- FICHA INDIVIDUAL DO ALUNO -->
+        <div id="tab-perfil-aluno" class="tab-content p-4 md:p-6 max-w-7xl mx-auto w-full hidden space-y-4">
+            <button onclick="switchTab('alunos')" class="text-blue-600 hover:underline flex items-center gap-2 text-sm font-medium mb-1">
+                <i class="fa-solid fa-arrow-left"></i> Voltar para lista de alunos
+            </button>
+            <div id="conteudo-perfil-aluno" class="space-y-4"></div>
+        </div>
+
+        <!-- RELATÓRIO DE AULA -->
+        <div id="tab-relatorio" class="tab-content p-4 md:p-8 max-w-4xl mx-auto w-full hidden space-y-6">
+            <h2 class="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2"><i class="fa-solid fa-file-pen text-green-600"></i> Registrar Nova Aula</h2>
+            <div class="bg-white p-4 md:p-6 rounded-xl shadow-xs border border-gray-200 space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Selecione o Aluno</label>
+                    <select id="relatorio-aluno-select" onchange="carregarDadosAlunoRelatorio()" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm"></select>
+                </div>
+                <div id="dados-rapidos-aluno" class="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-900 hidden">
+                    <div><strong>Instrumento:</strong> <span id="r-inst">-</span></div>
+                    <div><strong>Modalidade:</strong> <span id="r-mod">-</span></div>
+                    <div><strong>Nível:</strong> <span id="r-niv">-</span></div>
+                    <div><strong>Data:</strong> <input type="date" id="r-data" class="bg-transparent border-b border-blue-300 focus:outline-none text-sm w-full"></div>
+                </div>
+                <hr class="border-gray-200">
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-book-open text-blue-500"></i> Assuntos Trabalhados</h3>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="abrirGerenciadorSugestoes('assuntos')" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 transition" title="Remover sugestões salvas">🗑️ Gerenciar</button>
+                            <button type="button" onclick="adicionarAssuntoRow()" class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded hover:bg-blue-100 transition">➕ Adicionar</button>
+                        </div>
+                    </div>
+                    <div id="container-assuntos" class="space-y-3"></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-music text-green-500"></i> Repertório Mapeado</h3>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="abrirGerenciadorSugestoes('repertorio')" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 transition" title="Remover sugestões salvas">🗑️ Gerenciar</button>
+                            <button type="button" onclick="adicionarRepertorioRow()" class="text-xs bg-green-50 text-green-600 px-3 py-1 rounded hover:bg-green-100 transition">➕ Adicionar</button>
+                        </div>
+                    </div>
+                    <div id="container-repertorio" class="space-y-2"></div>
+                </div>
+                <div id="secao-teclas-voicings" class="hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-keyboard text-indigo-500"></i> Voicings Aplicados</h3>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="abrirGerenciadorSugestoes('voicings')" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 transition" title="Remover sugestões salvas">🗑️ Gerenciar</button>
+                            <button type="button" onclick="adicionarVoicingRow()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded hover:bg-indigo-100 transition">➕ Adicionar</button>
+                        </div>
+                    </div>
+                    <div id="container-voicings" class="space-y-3"></div>
+                </div>
+                <div id="secao-cordas-shapes" class="hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-guitar text-amber-600"></i> Acordes e Shapes do Braço</h3>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="abrirGerenciadorSugestoes('shapes')" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 transition" title="Remover sugestões salvas">🗑️ Gerenciar</button>
+                            <button type="button" onclick="adicionarShapeAcordeRow()" class="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded hover:bg-amber-100 transition">➕ Adicionar Shape</button>
+                        </div>
+                    </div>
+                    <div id="container-shapes" class="space-y-6"></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-link text-cyan-500"></i> Links de Referência</h3>
+                        <button type="button" onclick="adicionarLinkRow()" class="text-xs bg-cyan-50 text-cyan-600 px-3 py-1 rounded hover:bg-cyan-100 transition">➕ Adicionar</button>
+                    </div>
+                    <div id="container-links" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-bullseye text-red-500"></i> Metas de Treino</h3>
+                        <button type="button" onclick="adicionarMetaRow()" class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 transition">➕ Adicionar</button>
+                    </div>
+                    <div id="container-metas" class="space-y-2"></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <!-- FIX #3: Este campo é salvo separadamente como planejamento e aparece no alerta da ficha -->
+                        <label class="block text-sm font-medium text-gray-700 mb-1">📌 Planejamento da Próxima Aula <span class="text-xs text-amber-600 font-semibold">(aparece no alerta da ficha)</span></label>
+                        <textarea id="r-planejamento" rows="3" class="w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm" placeholder="O que planeja para a próxima aula..."></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">🔒 Observações Internas / Técnicas</label>
+                        <textarea id="r-observacoes" rows="3" class="w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm" placeholder="Notas sobre postura, ritmo ou dificuldades motoras..."></textarea>
+                    </div>
+                </div>
+                <div class="pt-4 flex justify-end gap-3">
+                    <button onclick="gerarTextoRelatorio()" class="bg-amber-500 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-amber-600 transition flex items-center gap-2 shadow-xs text-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Relatório
+                    </button>
+                </div>
+            </div>
+
+            <div id="box-editor-relatorio" class="bg-white p-4 md:p-6 rounded-xl shadow-xs border border-gray-200 space-y-4 hidden">
+                <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-eye text-amber-500"></i> Revisar Texto do Guia</h3>
+                <textarea id="editor-texto-final" rows="8" class="w-full p-3 border border-gray-300 rounded-lg text-sm bg-gray-50 font-mono"></textarea>
+                <div class="flex justify-end gap-3">
+                    <button onclick="salvarAulaEAbrirPDF()" class="bg-green-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-green-700 transition flex items-center gap-2 shadow-xs text-sm">
+                        <i class="fa-solid fa-print"></i> Salvar e Abrir PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="tab-dashboard" class="tab-content p-4 md:p-8 max-w-6xl mx-auto w-full hidden space-y-6 md:space-y-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2"><i class="fa-solid fa-chart-pie text-purple-600"></i> Dashboard Geral</h2>
+                    <p class="text-sm text-gray-500 mt-0.5" id="dash-data-hoje"></p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="switchTab('relatorio')" class="bg-green-600 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-green-700 transition flex items-center gap-2">
+                        <i class="fa-solid fa-pen-to-square"></i> Nova Aula
+                    </button>
+                    <button onclick="switchTab('alunos')" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2">
+                        <i class="fa-solid fa-user-plus"></i> Novo Aluno
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                <div class="dash-stat-card">
+                    <div><span class="text-xs font-medium text-gray-400 block mb-1">Alunos Ativos</span><span id="dash-total-alunos" class="text-2xl md:text-3xl font-bold text-gray-900">0</span></div>
+                    <div class="text-blue-500 bg-blue-50 p-2.5 rounded-xl text-lg"><i class="fa-solid fa-users"></i></div>
+                </div>
+                <div class="dash-stat-card">
+                    <div><span class="text-xs font-medium text-gray-400 block mb-1">Aulas Registradas</span><span id="dash-total-aulas" class="text-2xl md:text-3xl font-bold text-gray-900">0</span></div>
+                    <div class="text-green-500 bg-green-50 p-2.5 rounded-xl text-lg"><i class="fa-solid fa-graduation-cap"></i></div>
+                </div>
+                <div class="dash-stat-card">
+                    <div><span class="text-xs font-medium text-gray-400 block mb-1">Assuntos no Acervo</span><span id="dash-total-assuntos" class="text-2xl md:text-3xl font-bold text-gray-900">0</span></div>
+                    <div class="text-amber-500 bg-amber-50 p-2.5 rounded-xl text-lg"><i class="fa-solid fa-book"></i></div>
+                </div>
+                <div class="dash-stat-card">
+                    <div><span class="text-xs font-medium text-gray-400 block mb-1">Músicas no Repertório</span><span id="dash-total-repertorios" class="text-2xl md:text-3xl font-bold text-gray-900">0</span></div>
+                    <div class="text-purple-500 bg-purple-50 p-2.5 rounded-xl text-lg"><i class="fa-solid fa-music"></i></div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                <div class="lg:col-span-2 space-y-4 md:space-y-6">
+                    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div class="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100 flex justify-between items-center">
+                            <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-clock-rotate-left text-indigo-500"></i> Últimas Aulas Registradas</h3>
+                            <span class="text-xs text-gray-400">Mais recentes primeiro</span>
+                        </div>
+                        <div id="dash-ultimas-aulas" class="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                            <p class="text-xs text-gray-400 italic text-center py-6">Nenhuma aula registrada ainda.</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-amber-200 overflow-hidden">
+                        <div class="px-4 py-3 md:px-5 md:py-4 border-b border-amber-100 bg-amber-50 flex items-center gap-2">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                            <h3 class="font-bold text-amber-800 text-sm">Alunos Sem Aula Recente <span class="text-xs font-normal">(+14 dias)</span></h3>
+                        </div>
+                        <div id="dash-alunos-sem-aula" class="p-4 space-y-2 max-h-44 overflow-y-auto">
+                            <p class="text-xs text-gray-400 italic text-center py-2">Todos os alunos tiveram aula recentemente.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-4 md:space-y-6">
+                    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div class="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100">
+                            <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-bolt text-yellow-500"></i> Ações Rápidas</h3>
+                        </div>
+                        <div class="p-4 space-y-2">
+                            <button onclick="switchTab('relatorio')" class="dash-quick-btn">
+                                <div class="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm flex-shrink-0"><i class="fa-solid fa-pen-to-square"></i></div>
+                                <div><span class="block font-semibold text-gray-800 text-sm">Registrar nova aula</span><span class="text-xs text-gray-400">Gerar guia de estudo</span></div>
+                            </button>
+                            <button onclick="openModalAluno()" class="dash-quick-btn">
+                                <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm flex-shrink-0"><i class="fa-solid fa-user-plus"></i></div>
+                                <div><span class="block font-semibold text-gray-800 text-sm">Cadastrar aluno</span><span class="text-xs text-gray-400">Criar nova ficha completa</span></div>
+                            </button>
+                            <button onclick="abrirGuiaRapido()" class="dash-quick-btn">
+                                <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm flex-shrink-0"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                                <div><span class="block font-semibold text-gray-800 text-sm">Guia de estudo rápido</span><span class="text-xs text-gray-400">Montar e imprimir em segundos</span></div>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div class="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100">
+                            <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-fire text-orange-500"></i> Assuntos Mais Ensinados</h3>
+                        </div>
+                        <div id="dash-top-assuntos" class="p-4 space-y-2 max-h-56 overflow-y-auto">
+                            <p class="text-xs text-gray-400 italic text-center py-2">Nenhum assunto registrado ainda.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div class="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100">
+                    <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm md:text-base"><i class="fa-solid fa-guitar text-slate-600"></i> Distribuição por Instrumento e Nível</h3>
+                </div>
+                <div id="dash-distribuicao" class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <p class="text-xs text-gray-400 italic col-span-full text-center py-2">Nenhum aluno cadastrado.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- MODAL CONFIG SUPABASE -->
+<div id="modal-supabase-config" class="fixed inset-0 bg-black/70 z-[999] flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5">
+        <div class="flex items-center gap-3">
+            <div class="bg-green-100 text-green-600 w-12 h-12 rounded-xl flex items-center justify-center text-2xl">&#x2601;&#xfe0f;</div>
+            <div>
+                <h2 class="font-bold text-xl text-gray-900">Configurar Banco de Dados</h2>
+                <p class="text-sm text-gray-500">Conecte ao Supabase para salvar seus dados na nuvem</p>
+            </div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <strong>Primeira vez?</strong> Siga o tutorial TUTORIAL_GitHub_Supabase.md para criar seu projeto gratuito no Supabase e obter as credenciais abaixo.
+        </div>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">URL do Projeto Supabase</label>
+                <input id="sb-url-input" type="url" placeholder="https://xyzxyz.supabase.co" class="w-full p-3 border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Chave Anon (anon public key)</label>
+                <input id="sb-key-input" type="password" placeholder="eyJhbGci..." class="w-full p-3 border border-gray-300 rounded-lg text-sm">
+                <p class="text-xs text-gray-400 mt-1">Encontre em Project Settings > API > anon public</p>
+            </div>
+        </div>
+        <div id="sb-config-erro" class="hidden bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3"></div>
+        <button onclick="salvarConfigSupabase()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition">
+            Salvar e Conectar
+        </button>
+        <div class="border-t pt-3">
+            <p class="text-xs text-gray-500 text-center mb-2">Tem um backup JSON do sistema antigo?</p>
+            <label class="w-full flex items-center justify-center gap-2 text-sm text-gray-600 border border-dashed border-gray-300 rounded-lg p-2 cursor-pointer hover:bg-gray-50">
+                Importar backup (.json)
+                <input type="file" id="input-backup-json" accept=".json" onchange="importarBackupJSON(event)" class="hidden">
+            </label>
+        </div>
+    </div>
+</div>
+
+<!-- BARRA DE STATUS SUPABASE -->
+<div id="sb-status-bar" class="hidden fixed bottom-0 left-0 right-0 z-50 text-xs text-center py-1 font-medium"></div>
+
+
+<!-- MODAL CADASTRO / EDIÇÃO DE ALUNO -->
+<div id="modal-aluno" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-3">
+    <div class="bg-white w-full max-w-3xl rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[95vh]">
+        <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+            <h3 id="modal-aluno-titulo" class="font-bold text-base md:text-lg">Cadastrar Novo Aluno</h3>
+            <button onclick="closeModalAluno()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <form id="form-aluno" onsubmit="salvarAluno(event)" class="p-4 md:p-6 space-y-5 overflow-y-auto flex-1">
+            <input type="hidden" id="aluno-id">
+            <h4 class="font-bold text-xs text-blue-600 uppercase tracking-wider border-b pb-1">Perfil do Aluno</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="col-span-1 md:col-span-2 space-y-3">
+                    <div><label class="block text-xs font-medium text-gray-600 mb-1">Nome Completo *</label><input type="text" id="a-nome" required class="w-full p-2 border border-gray-300 rounded text-sm"></div>
+                    <div><label class="block text-xs font-medium text-gray-600 mb-1">Nome no PDF (Apelido) *</label><input type="text" id="a-nome-pdf" required class="w-full p-2 border border-gray-300 rounded text-sm" placeholder="Nome impresso nas fichas e cabeçalhos"></div>
+                </div>
+                <div class="col-span-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-lg p-2 bg-gray-50 relative">
+                    <label class="block text-xs font-medium text-gray-500 mb-2 text-center">Foto do Aluno</label>
+                    <input type="file" id="a-foto-file" accept="image/*" onchange="previewImage(this)" class="absolute inset-0 opacity-0 cursor-pointer">
+                    <img id="a-foto-preview" class="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover hidden border" src="">
+                    <div id="a-foto-placeholder" class="text-gray-400 text-2xl"><i class="fa-solid fa-camera"></i></div>
+                    <input type="hidden" id="a-foto-base64">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label class="block text-xs font-medium text-gray-600 mb-1">Telefone de Contato</label><input type="text" id="a-telefone" class="w-full p-2 border border-gray-300 rounded text-sm"></div>
+                <div><label class="block text-xs font-medium text-gray-600 mb-1">Endereço Residencial</label><input type="text" id="a-endereco" class="w-full p-2 border border-gray-300 rounded text-sm"></div>
+            </div>
+            <h4 class="font-bold text-xs text-blue-600 uppercase tracking-wider border-b pb-1">Configuração de Aula</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Instrumento Principal *</label>
+                    <select id="a-instrumento" required class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                        <option value="Piano">Piano</option><option value="Teclado">Teclado</option><option value="Violão">Violão</option><option value="Guitarra">Guitarra</option><option value="Ukulele">Ukulele</option><option value="Baixo">Contrabaixo</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Modalidade *</label>
+                    <select id="a-modalidade" required class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                        <option value="Presencial">Presencial</option><option value="Online">Online</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Nível Técnico *</label>
+                    <select id="a-nivel" required class="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                        <option value="Iniciante">Iniciante</option><option value="Intermediário">Intermediário</option><option value="Avançado">Avançado</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label class="block text-xs font-medium text-gray-600 mb-1">Estilos Preferidos</label><input type="text" id="a-estilos" class="w-full p-2 border border-gray-300 rounded text-sm"></div>
+                <div><label class="block text-xs font-medium text-gray-600 mb-1">Objetivos a Curto/Longo Prazo</label><input type="text" id="a-objetivo" class="w-full p-2 border border-gray-300 rounded text-sm"></div>
+            </div>
+            <div><label class="block text-xs font-medium text-gray-600 mb-1">Como conheceu as aulas / Observações de Nivelamento</label><textarea id="a-como-chegou" rows="2" class="w-full p-2 border border-gray-300 rounded text-sm"></textarea></div>
+            <div class="pt-4 border-t flex justify-end gap-2">
+                <button type="button" onclick="closeModalAluno()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">Cancelar</button>
+                <button type="submit" class="bg-blue-600 text-white px-5 py-2 rounded text-sm font-medium hover:bg-blue-700 transition">Salvar Registro</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL GUIA RÁPIDO -->
+<div id="modal-guia-rapido" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-3">
+    <div class="bg-white w-full max-w-lg rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[95vh]">
+        <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+            <h3 class="font-bold text-base flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-yellow-400"></i> Guia de Estudo Rápido</h3>
+            <button onclick="document.getElementById('modal-guia-rapido').classList.add('hidden')" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <div class="p-5 space-y-4 overflow-y-auto flex-1">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Aluno</label><select id="guia-aluno-select" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm"></select></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Conteúdo Principal</label><input type="text" id="guia-conteudo" placeholder="Ex: Escala pentatônica menor" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Música Trabalhada</label><input type="text" id="guia-musica" placeholder="Ex: Wish You Were Here" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Meta da Semana</label><input type="text" id="guia-meta" placeholder="Ex: Praticar 15 min/dia no metrônomo" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Observação Extra (opcional)</label><textarea id="guia-obs" rows="2" placeholder="Dica ou detalhe técnico..." class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm"></textarea></div>
+            <div class="pt-2 flex justify-end gap-2">
+                <button onclick="document.getElementById('modal-guia-rapido').classList.add('hidden')" class="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm font-medium">Cancelar</button>
+                <button onclick="gerarGuiaRapidoPDF()" class="bg-purple-600 text-white px-5 py-2 rounded text-sm font-medium hover:bg-purple-700 transition flex items-center gap-2"><i class="fa-solid fa-print"></i> Gerar PDF</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL GERENCIADOR DE SUGESTÕES -->
+<div id="modal-gerenciar-sugestoes" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-3">
+    <div class="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+            <h3 id="gerenciar-sugestoes-titulo" class="font-bold text-base flex items-center gap-2"><i class="fa-solid fa-trash text-red-400"></i> Gerenciar Sugestões</h3>
+            <button onclick="document.getElementById('modal-gerenciar-sugestoes').classList.add('hidden')" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <div class="p-4 overflow-y-auto flex-1">
+            <p class="text-xs text-gray-500 mb-3">Clique no ✕ para apagar a sugestão salva do aluno. Isso remove o item das listas de autocompletar.</p>
+            <div id="gerenciar-sugestoes-lista" class="space-y-1"></div>
+        </div>
+        <div class="p-3 border-t flex justify-end">
+            <button onclick="document.getElementById('modal-gerenciar-sugestoes').classList.add('hidden')" class="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm font-medium">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Pausar ou Excluir Aluno -->
+<div id="modal-excluir-aluno" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-3">
+    <div class="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden">
+        <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+            <h3 class="font-bold text-base flex items-center gap-2"><i class="fa-solid fa-circle-exclamation text-amber-400"></i> O que deseja fazer?</h3>
+            <button onclick="fecharOpcoesExclusao()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <div class="p-5 space-y-4">
+            <input type="hidden" id="excluir-aluno-id">
+            <p class="text-sm text-gray-700">Aluno: <strong id="excluir-aluno-nome"></strong></p>
+            <div class="space-y-2">
+                <button onclick="pausarAluno(document.getElementById('excluir-aluno-id').value)" class="w-full bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-bold p-3 rounded-lg text-sm text-left flex items-start gap-3">
+                    <span class="text-xl">⏸</span>
+                    <span><span class="block">Pausar Matrícula</span><span class="block text-xs font-normal text-amber-800 mt-0.5">Mantém todos os dados salvos. Use se o aluno parou temporariamente e pode voltar.</span></span>
+                </button>
+                <button onclick="excluirAlunoDefinitivo(document.getElementById('excluir-aluno-id').value)" class="w-full bg-red-100 hover:bg-red-200 border border-red-300 text-red-900 font-bold p-3 rounded-lg text-sm text-left flex items-start gap-3">
+                    <span class="text-xl">🗑️</span>
+                    <span><span class="block">Excluir Definitivamente</span><span class="block text-xs font-normal text-red-800 mt-0.5">Apaga aluno, aulas, acordes, voicings e evolução. Não pode ser desfeito.</span></span>
+                </button>
+                <button onclick="fecharOpcoesExclusao()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium p-2.5 rounded-lg text-sm">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<datalist id="datalist-assuntos"></datalist>
+<datalist id="datalist-repertorios"></datalist>
+<datalist id="datalist-voicings"></datalist>
+<datalist id="datalist-shapes"></datalist>
+
+<script>
+    /* =============================================
+       ESTRUTURA DE DADOS
+       
+       FIX #1: Todos os acervos são POR ALUNO.
+       Chaves: dbAlunos, dbAulas, mapaConhecimento
+       Por aluno: alunoAcordes[id], alunoVoicings[id],
+                  alunoRepertorios[id]
+    ============================================= */
+
+    // ══════════════════════════════════════════════════════
+    //  SUPABASE — configuração e inicialização
+    // ══════════════════════════════════════════════════════
+    let supabaseClient = null;
+    let sbConectado = false;
+
+    function getSupabaseCreds() {
+        return {
+            url: localStorage.getItem('sb_url') || '',
+            key: localStorage.getItem('sb_key') || ''
+        };
+    }
+
+    async function inicializarSupabase(url, key) {
+        try {
+            supabaseClient = supabase.createClient(url, key);
+            // Testa a conexão
+            const { error } = await supabaseClient.from('alunos').select('id').limit(1);
+            if (error) throw error;
+            sbConectado = true;
+            mostrarStatusSB('✅ Conectado ao Supabase', 'bg-green-600 text-white');
+            setTimeout(() => esconderStatusSB(), 3000);
+            return true;
+        } catch(e) {
+            sbConectado = false;
+            mostrarStatusSB('⚠️ Sem conexão — dados salvos localmente', 'bg-yellow-500 text-white');
+            console.warn('Supabase erro:', e.message);
+            return false;
+        }
+    }
+
+    function mostrarStatusSB(msg, classes) {
+        const bar = document.getElementById('sb-status-bar');
+        bar.textContent = msg;
+        bar.className = 'fixed bottom-0 left-0 right-0 z-50 text-xs text-center py-1 font-medium ' + classes;
+        bar.classList.remove('hidden');
+    }
+    function esconderStatusSB() {
+        document.getElementById('sb-status-bar').classList.add('hidden');
+    }
+
+    async function salvarConfigSupabase() {
+        const url = document.getElementById('sb-url-input').value.trim();
+        const key = document.getElementById('sb-key-input').value.trim();
+        const erroEl = document.getElementById('sb-config-erro');
+        erroEl.classList.add('hidden');
+
+        if (!url || !key) {
+            erroEl.textContent = 'Preencha a URL e a chave antes de continuar.';
+            erroEl.classList.remove('hidden');
+            return;
+        }
+        if (!url.startsWith('https://')) {
+            erroEl.textContent = 'A URL deve começar com https://';
+            erroEl.classList.remove('hidden');
+            return;
+        }
+
+        localStorage.setItem('sb_url', url);
+        localStorage.setItem('sb_key', key);
+
+        const ok = await inicializarSupabase(url, key);
+        if (ok) {
+            document.getElementById('modal-supabase-config').classList.add('hidden');
+            await carregarTodosDados();
+            listarAlunos();
+            atualizarDashboard();
+            atualizarDatalists();
+        } else {
+            erroEl.textContent = 'Não foi possível conectar. Verifique a URL e a chave e tente novamente.';
+            erroEl.classList.remove('hidden');
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  DADOS em memória (carregados do Supabase ou localStorage fallback)
+    // ══════════════════════════════════════════════════════
+    let dbAlunos        = [];
+    let dbAulas         = [];
+    let mapaConhecimento= {};
+    let alunoAcordes    = {};
+    let alunoVoicings   = {};
+    let alunoRepertorios= {};
+    let globalAssuntos  = [];
+
+    // ── MOBILE SIDEBAR ──
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('sidebar-overlay').classList.toggle('open');
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  CARGA INICIAL DE DADOS
+    // ══════════════════════════════════════════════════════
+    async function carregarTodosDados() {
+        if (!sbConectado) {
+            // Fallback: localStorage
+            dbAlunos         = JSON.parse(localStorage.getItem('dbAlunos'))         || [];
+            dbAulas          = JSON.parse(localStorage.getItem('dbAulas'))          || [];
+            mapaConhecimento = JSON.parse(localStorage.getItem('mapaConhecimento')) || {};
+            alunoAcordes     = JSON.parse(localStorage.getItem('alunoAcordes'))     || {};
+            alunoVoicings    = JSON.parse(localStorage.getItem('alunoVoicings'))    || {};
+            alunoRepertorios = JSON.parse(localStorage.getItem('alunoRepertorios')) || {};
+            globalAssuntos   = JSON.parse(localStorage.getItem('globalAssuntos'))   || [];
+            return;
+        }
+
+        try {
+            // Carrega alunos
+            const { data: alunosData } = await supabaseClient.from('alunos').select('*');
+            dbAlunos = (alunosData || []).map(r => r.dados);
+
+            // Carrega aulas
+            const { data: aulasData } = await supabaseClient.from('aulas').select('*');
+            dbAulas = (aulasData || []).map(r => r.dados);
+
+            // Carrega dados extras por aluno
+            const { data: extrasData } = await supabaseClient.from('dados_aluno').select('*');
+            (extrasData || []).forEach(r => {
+                alunoAcordes[r.aluno_id]     = r.acordes     || {};
+                alunoVoicings[r.aluno_id]    = r.voicings    || {};
+                alunoRepertorios[r.aluno_id] = r.repertorios || [];
+                mapaConhecimento[r.aluno_id] = r.mapa_conhecimento || {};
+            });
+
+            // Carrega config global
+            const { data: configData } = await supabaseClient
+                .from('config_global').select('valor').eq('chave', 'globalAssuntos').single();
+            globalAssuntos = configData?.valor || [];
+
+        } catch(e) {
+            console.error('Erro ao carregar dados:', e);
+            mostrarStatusSB('⚠️ Erro ao carregar dados', 'bg-red-600 text-white');
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+        const { url, key } = getSupabaseCreds();
+        if (url && key) {
+            const ok = await inicializarSupabase(url, key);
+            if (ok) {
+                document.getElementById('modal-supabase-config').classList.add('hidden');
+                await carregarTodosDados();
+            } else {
+                await carregarTodosDados(); // fallback local
+                document.getElementById('modal-supabase-config').classList.add('hidden');
+            }
+        } else {
+            // Sem config: mostra modal
+            // (o modal já está visível por padrão)
+        }
+        switchTab('inicio');
+        atualizarDashboard();
+        atualizarDatalists();
+    });
+
+    // ══════════════════════════════════════════════════════
+    //  IMPORTAÇÃO DE BACKUP JSON (migração do sistema antigo)
+    // ══════════════════════════════════════════════════════
+    async function importarBackupJSON(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        let backup;
+        try { backup = JSON.parse(text); } catch(e) { alert('Arquivo JSON inválido.'); return; }
+
+        // Carrega em memória
+        dbAlunos         = backup.dbAlunos         || [];
+        dbAulas          = backup.dbAulas          || [];
+        mapaConhecimento = backup.mapaConhecimento || {};
+        alunoAcordes     = backup.alunoAcordes     || {};
+        alunoVoicings    = backup.alunoVoicings    || {};
+        alunoRepertorios = backup.alunoRepertorios || {};
+        globalAssuntos   = backup.globalAssuntos   || [];
+
+        // Salva para o Supabase (ou localStorage se não conectado)
+        mostrarStatusSB('⬆️ Enviando backup para a nuvem...', 'bg-blue-600 text-white');
+
+        await salvarTodosAlunos();
+        await salvarTodasAulas();
+        for (const id of Object.keys(alunoAcordes)) {
+            await salvarDadosExtraAluno(id);
+        }
+        await salvarGlobalAssuntos();
+
+        mostrarStatusSB('✅ Backup importado com sucesso!', 'bg-green-600 text-white');
+        setTimeout(() => esconderStatusSB(), 3000);
+
+        document.getElementById('modal-supabase-config').classList.add('hidden');
+        listarAlunos();
+        atualizarDashboard();
+        atualizarDatalists();
+    }
+
+    // Salva todos alunos de uma vez (usado na importação)
+    async function salvarTodosAlunos() {
+        if (!sbConectado) { localStorage.setItem('dbAlunos', JSON.stringify(dbAlunos)); return; }
+        for (const aluno of dbAlunos) {
+            await supabaseClient.from('alunos').upsert({ id: aluno.id, dados: aluno });
+        }
+    }
+    async function salvarTodasAulas() {
+        if (!sbConectado) { localStorage.setItem('dbAulas', JSON.stringify(dbAulas)); return; }
+        for (const aula of dbAulas) {
+            await supabaseClient.from('aulas').upsert({ id: aula.id, aluno_id: aula.alunoId, dados: aula });
+        }
+    }
+
+    function atualizarDatalists() {
+        // Datalist de assuntos: global
+        document.getElementById('datalist-assuntos').innerHTML =
+            globalAssuntos.map(a => `<option value="${a}">`).join('');
+
+        // Datalists de acordes/voicings: junta todos os alunos para sugestão
+        const todosAcordes = new Set();
+        Object.values(alunoAcordes).forEach(obj => Object.keys(obj).forEach(k => todosAcordes.add(k)));
+        document.getElementById('datalist-shapes').innerHTML =
+            [...todosAcordes].map(s => `<option value="${s}">`).join('');
+
+        const todosVoicings = new Set();
+        Object.values(alunoVoicings).forEach(obj => Object.keys(obj).forEach(k => todosVoicings.add(k)));
+        document.getElementById('datalist-voicings').innerHTML =
+            [...todosVoicings].map(v => `<option value="${v}">`).join('');
+
+        const todosRep = new Set();
+        Object.values(alunoRepertorios).forEach(arr => arr.forEach(r => todosRep.add(r.nome)));
+        document.getElementById('datalist-repertorios').innerHTML =
+            [...todosRep].map(r => `<option value="${r}">`).join('');
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  HELPERS DE PERSISTÊNCIA (Supabase + fallback localStorage)
+    // ══════════════════════════════════════════════════════
+
+    async function salvarDadosExtraAluno(alunoId) {
+        if (!sbConectado) {
+            localStorage.setItem('alunoAcordes',     JSON.stringify(alunoAcordes));
+            localStorage.setItem('alunoVoicings',    JSON.stringify(alunoVoicings));
+            localStorage.setItem('alunoRepertorios', JSON.stringify(alunoRepertorios));
+            localStorage.setItem('mapaConhecimento', JSON.stringify(mapaConhecimento));
+            return;
+        }
+        try {
+            await supabaseClient.from('dados_aluno').upsert({
+                aluno_id: alunoId,
+                acordes:          alunoAcordes[alunoId]     || {},
+                voicings:         alunoVoicings[alunoId]    || {},
+                repertorios:      alunoRepertorios[alunoId] || [],
+                mapa_conhecimento: mapaConhecimento[alunoId] || {},
+                atualizado_em:    new Date().toISOString()
+            });
+        } catch(e) { console.error('Erro ao salvar dados aluno:', e); }
+    }
+
+    // Mantém compatibilidade: qualquer função que chame os helpers antigos funcionará
+    async function salvarAlunoAcordes(id)     { if(id) await salvarDadosExtraAluno(id); else { Object.keys(alunoAcordes).forEach(i => salvarDadosExtraAluno(i)); } }
+    async function salvarAlunoVoicings(id)    { if(id) await salvarDadosExtraAluno(id); else { Object.keys(alunoVoicings).forEach(i => salvarDadosExtraAluno(i)); } }
+    async function salvarAlunoRepertorios(id) { if(id) await salvarDadosExtraAluno(id); else { Object.keys(alunoRepertorios).forEach(i => salvarDadosExtraAluno(i)); } }
+    async function salvarMapaGlobal(id)       { if(id) await salvarDadosExtraAluno(id); else { Object.keys(mapaConhecimento).forEach(i => salvarDadosExtraAluno(i)); } }
+
+    async function salvarGlobalAssuntos() {
+        if (!sbConectado) { localStorage.setItem('globalAssuntos', JSON.stringify(globalAssuntos)); return; }
+        try {
+            await supabaseClient.from('config_global').upsert({ chave: 'globalAssuntos', valor: globalAssuntos });
+        } catch(e) { console.error('Erro ao salvar assuntos:', e); }
+    }
+
+    async function salvarAlunoDB(aluno) {
+        if (!sbConectado) { localStorage.setItem('dbAlunos', JSON.stringify(dbAlunos)); return; }
+        try {
+            await supabaseClient.from('alunos').upsert({ id: aluno.id, dados: aluno, atualizado_em: new Date().toISOString() });
+        } catch(e) { console.error('Erro ao salvar aluno:', e); }
+    }
+
+    async function excluirAlunoDB(alunoId) {
+        if (!sbConectado) { localStorage.setItem('dbAlunos', JSON.stringify(dbAlunos)); return; }
+        try {
+            await supabaseClient.from('alunos').delete().eq('id', alunoId);
+            await supabaseClient.from('aulas').delete().eq('aluno_id', alunoId);
+            await supabaseClient.from('dados_aluno').delete().eq('aluno_id', alunoId);
+        } catch(e) { console.error('Erro ao excluir aluno:', e); }
+    }
+
+    async function salvarAulaDB(aula) {
+        if (!sbConectado) { localStorage.setItem('dbAulas', JSON.stringify(dbAulas)); return; }
+        try {
+            await supabaseClient.from('aulas').upsert({ id: aula.id, aluno_id: aula.alunoId, dados: aula });
+        } catch(e) { console.error('Erro ao salvar aula:', e); }
+    }
+
+    function previewImage(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('a-foto-base64').value = e.target.result;
+                document.getElementById('a-foto-preview').src = e.target.result;
+                document.getElementById('a-foto-preview').classList.remove('hidden');
+                document.getElementById('a-foto-placeholder').classList.add('hidden');
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+        const sideBtn = document.getElementById(`btn-tab-${tabId}`);
+        if (sideBtn) sideBtn.classList.add('active');
+        // Fecha sidebar mobile ao navegar
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-overlay').classList.remove('open');
+
+        if (tabId === 'alunos')    listarAlunos();
+        if (tabId === 'relatorio') prepararTelaRelatorio();
+        if (tabId === 'dashboard') atualizarDashboard();
+    }
+
+    /* ── CADASTRO DE ALUNOS ── */
+
+    function listarAlunos() {
+        const grid = document.getElementById('lista-alunos-grid');
+        grid.innerHTML = '';
+        // Atualiza contadores das abas
+        const totalAtivos = dbAlunos.filter(a => !a.pausado).length;
+        const totalArquivados = dbAlunos.filter(a => !!a.pausado).length;
+        const cAt = document.getElementById('contador-alunos-ativos');
+        const cAr = document.getElementById('contador-alunos-arquivados');
+        if (cAt) cAt.innerText = totalAtivos;
+        if (cAr) cAr.innerText = totalArquivados;
+
+        if (typeof window.alunosAbaAtual === 'undefined') window.alunosAbaAtual = 'ativos';
+        const mostrandoArquivados = window.alunosAbaAtual === 'arquivados';
+        const lista = dbAlunos.filter(a => mostrandoArquivados ? !!a.pausado : !a.pausado);
+
+        if (lista.length === 0) {
+            const msg = mostrandoArquivados
+                ? 'Nenhum aluno arquivado. Alunos pausados aparecem aqui.'
+                : (dbAlunos.length === 0 ? 'Nenhum aluno cadastrado no momento.' : 'Nenhum aluno ativo. Veja os arquivados na aba ao lado.');
+            grid.innerHTML = `<div class="col-span-full text-center py-12 text-gray-400 italic bg-white rounded-xl border">${msg}</div>`;
+            return;
+        }
+        lista.forEach(aluno => {
+            const fotoSrc = aluno.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
+            const card = document.createElement('div');
+            const pausado = !!aluno.pausado;
+            card.className = "bg-white rounded-xl border border-gray-200 p-5 shadow-xs hover:shadow-md flex flex-col justify-between";
+            const acaoBtn = pausado
+                ? `<button onclick="reativarAluno('${aluno.id}')" title="Reativar matrícula" class="bg-green-50 text-green-700 p-1.5 rounded text-xs"><i class="fa-solid fa-rotate-left"></i></button>`
+                : `<button onclick="abrirOpcoesExclusao('${aluno.id}')" title="Pausar ou excluir" class="bg-red-50 text-red-700 p-1.5 rounded text-xs"><i class="fa-solid fa-trash"></i></button>`;
+            const badgePausado = pausado
+                ? `<span class="px-2 py-1 rounded bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">⏸ Pausado</span>`
+                : '';
+            card.innerHTML = `
+                <div>
+                    <div class="flex justify-between items-start mb-3">
+                        <img src="${fotoSrc}" class="w-12 h-12 rounded-full object-cover border">
+                        <div class="flex flex-col items-end gap-1">
+                            <span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-semibold">${aluno.instrumento}</span>
+                            ${badgePausado}
+                        </div>
+                    </div>
+                    <h3 class="text-base md:text-lg font-bold text-gray-900">${aluno.nomePdf || aluno.nome}</h3>
+                    <p class="text-xs text-gray-400 mb-2">Nome Completo: ${aluno.nome}</p>
+                    <p class="text-xs text-gray-600 line-clamp-2">🎯 ${aluno.objetivo || 'Sem foco cadastrado'}</p>
+                </div>
+                <div class="mt-5 pt-3 border-t flex gap-2">
+                    <button onclick="verPerfilAluno('${aluno.id}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium py-1.5 px-3 rounded text-xs transition">Ficha e Evolução</button>
+                    <button onclick="editarAluno('${aluno.id}')" class="bg-amber-50 text-amber-700 p-1.5 rounded text-xs"><i class="fa-solid fa-pen"></i></button>
+                    ${acaoBtn}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function trocarAbaAlunos(qual) {
+        window.alunosAbaAtual = qual;
+        const btnA = document.getElementById('aba-alunos-ativos');
+        const btnB = document.getElementById('aba-alunos-arquivados');
+        if (qual === 'ativos') {
+            btnA.className = 'px-4 py-2 text-sm font-semibold border-b-2 border-blue-600 text-blue-700 flex items-center gap-2';
+            btnB.className = 'px-4 py-2 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2';
+        } else {
+            btnB.className = 'px-4 py-2 text-sm font-semibold border-b-2 border-amber-500 text-amber-700 flex items-center gap-2';
+            btnA.className = 'px-4 py-2 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2';
+        }
+        listarAlunos();
+    }
+
+    function openModalAluno() {
+        document.getElementById('form-aluno').reset();
+        document.getElementById('aluno-id').value = '';
+        document.getElementById('a-foto-base64').value = '';
+        document.getElementById('a-foto-preview').classList.add('hidden');
+        document.getElementById('a-foto-placeholder').classList.remove('hidden');
+        document.getElementById('modal-aluno-titulo').innerText = 'Cadastrar Novo Aluno';
+        document.getElementById('modal-aluno').classList.remove('hidden');
+    }
+    function closeModalAluno() { document.getElementById('modal-aluno').classList.add('hidden'); }
+
+    function salvarAluno(e) {
+        e.preventDefault();
+        const id = document.getElementById('aluno-id').value || Date.now().toString();
+        const ehNovo = !document.getElementById('aluno-id').value;
+        const novoAluno = {
+            id,
+            nome:       document.getElementById('a-nome').value,
+            nomePdf:    document.getElementById('a-nome-pdf').value,
+            telefone:   document.getElementById('a-telefone').value,
+            endereco:   document.getElementById('a-endereco').value,
+            instrumento:document.getElementById('a-instrumento').value,
+            modalidade: document.getElementById('a-modalidade').value,
+            nivel:      document.getElementById('a-nivel').value,
+            estilos:    document.getElementById('a-estilos').value,
+            objetivo:   document.getElementById('a-objetivo').value,
+            comoChegou: document.getElementById('a-como-chegou').value,
+            foto:       document.getElementById('a-foto-base64').value
+        };
+        const index = dbAlunos.findIndex(a => a.id === id);
+        if (index >= 0) dbAlunos[index] = novoAluno;
+        else {
+            dbAlunos.push(novoAluno);
+            // FIX #1: zera acervos individuais para novo aluno
+            alunoAcordes[id]     = {};
+            alunoVoicings[id]    = {};
+            alunoRepertorios[id] = [];
+            mapaConhecimento[id] = {};
+            salvarAlunoAcordes(id);
+            salvarAlunoVoicings(id);
+            salvarAlunoRepertorios(id);
+            salvarMapaGlobal(id);
+        }
+        salvarAlunoDB(novoAluno);
+        closeModalAluno();
+        listarAlunos();
+    }
+
+    function editarAluno(id) {
+        const aluno = dbAlunos.find(a => a.id === id);
+        if (!aluno) return;
+        document.getElementById('aluno-id').value      = aluno.id;
+        document.getElementById('a-nome').value         = aluno.nome;
+        document.getElementById('a-nome-pdf').value     = aluno.nomePdf || '';
+        document.getElementById('a-telefone').value     = aluno.telefone;
+        document.getElementById('a-endereco').value     = aluno.endereco || '';
+        document.getElementById('a-instrumento').value  = aluno.instrumento;
+        document.getElementById('a-modalidade').value   = aluno.modalidade;
+        document.getElementById('a-nivel').value        = aluno.nivel;
+        document.getElementById('a-estilos').value      = aluno.estilos || '';
+        document.getElementById('a-objetivo').value     = aluno.objetivo || '';
+        document.getElementById('a-como-chegou').value  = aluno.comoChegou || '';
+        if (aluno.foto) {
+            document.getElementById('a-foto-base64').value = aluno.foto;
+            document.getElementById('a-foto-preview').src  = aluno.foto;
+            document.getElementById('a-foto-preview').classList.remove('hidden');
+            document.getElementById('a-foto-placeholder').classList.add('hidden');
+        }
+        document.getElementById('modal-aluno-titulo').innerText = 'Editar Aluno';
+        document.getElementById('modal-aluno').classList.remove('hidden');
+    }
+
+    function abrirOpcoesExclusao(id) {
+        const aluno = dbAlunos.find(a => a.id === id);
+        if (!aluno) return;
+        document.getElementById('excluir-aluno-id').value = id;
+        document.getElementById('excluir-aluno-nome').innerText = aluno.nomePdf || aluno.nome;
+        document.getElementById('modal-excluir-aluno').classList.remove('hidden');
+    }
+    function fecharOpcoesExclusao() {
+        document.getElementById('modal-excluir-aluno').classList.add('hidden');
+    }
+    function pausarAluno(id) {
+        const a = dbAlunos.find(x => x.id === id);
+        if (!a) return;
+        a.pausado = true;
+        a.pausadoEm = new Date().toISOString();
+        salvarAlunoDB(a);
+        fecharOpcoesExclusao();
+        listarAlunos();
+    }
+    function reativarAluno(id) {
+        const a = dbAlunos.find(x => x.id === id);
+        if (!a) return;
+        a.pausado = false;
+        delete a.pausadoEm;
+        salvarAlunoDB(a);
+        listarAlunos();
+    }
+    function excluirAlunoDefinitivo(id) {
+        const aluno = dbAlunos.find(a => a.id === id);
+        if (!aluno) return;
+        const conf = prompt(`ATENÇÃO! Isso apaga TODOS os dados de ${aluno.nomePdf||aluno.nome} (aulas, acordes, voicings, repertório, evolução) e NÃO pode ser desfeito.\n\nDigite EXCLUIR para confirmar:`);
+        if (conf !== 'EXCLUIR') return;
+        dbAlunos = dbAlunos.filter(a => a.id !== id);
+        dbAulas  = dbAulas.filter(au => au.alunoId !== id);
+        delete alunoAcordes[id];
+        delete alunoVoicings[id];
+        delete alunoRepertorios[id];
+        delete mapaConhecimento[id];
+        excluirAlunoDB(id);
+        salvarAlunoAcordes(); salvarAlunoVoicings();
+        salvarAlunoRepertorios(); salvarMapaGlobal();
+        fecharOpcoesExclusao();
+        listarAlunos();
+    }
+    // alias para compatibilidade
+    function excluirAluno(id) { abrirOpcoesExclusao(id); }
+
+    /* =============================================
+       MAPA DE CONHECIMENTO (por aluno)
+    ============================================= */
+
+    function getMapaAluno(alunoId) {
+        if (!mapaConhecimento[alunoId]) mapaConhecimento[alunoId] = {};
+        return mapaConhecimento[alunoId];
+    }
+
+    const STATUS_CONFIG = {
+        'desenvolvendo': { label: '🟡 Em desenvolvimento', cls: 'bg-amber-100 text-amber-700' },
+        'dominado':      { label: '✅ Dominado',            cls: 'bg-green-100 text-green-700'  },
+        'revisar':       { label: '🔴 Precisa revisar',     cls: 'bg-red-100 text-red-700'      }
+    };
+    const CICLO_STATUS = { 'desenvolvendo': 'dominado', 'dominado': 'revisar', 'revisar': 'desenvolvendo' };
+
+    // Nº de cordas por instrumento (para o diagrama de braço)
+    function getNumStrings(instrumento) {
+        if (['Ukulele','Baixo'].includes(instrumento)) return 4;
+        return 6; // Violão / Guitarra (default)
+    }
+    function getInstrumentoAluno(alunoId) {
+        const a = dbAlunos.find(x => x.id === alunoId);
+        return a ? a.instrumento : 'Violão';
+    }
+
+    function ciclararStatusMapa(alunoId, assunto) {
+        const mapa = getMapaAluno(alunoId);
+        mapa[assunto] = CICLO_STATUS[mapa[assunto] || 'desenvolvendo'];
+        salvarMapaGlobal();
+        renderMapaConhecimento(alunoId);
+    }
+
+    function renderMapaConhecimento(alunoId) {
+        const container = document.getElementById(`mapa-conhecimento-${alunoId}`);
+        if (!container) return;
+        const mapa = getMapaAluno(alunoId);
+        const aulasAluno = dbAulas.filter(au => au.alunoId === alunoId);
+        const contagem = {};
+        aulasAluno.forEach(au => {
+            (au.assuntos || []).forEach(ass => { contagem[ass] = (contagem[ass] || 0) + 1; });
+        });
+        const todos = Object.keys(contagem);
+        if (todos.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400 italic text-center py-4">Nenhum assunto registrado nas aulas deste aluno.</p>';
+            return;
+        }
+        container.innerHTML = todos.map(assunto => {
+            const status = mapa[assunto] || 'desenvolvendo';
+            const cfg = STATUS_CONFIG[status];
+            return `
+                <div class="p-2.5 bg-slate-50 rounded-xl border border-gray-100 flex justify-between items-center text-xs gap-2">
+                    <div class="min-w-0">
+                        <span class="block font-bold text-slate-700 truncate">${assunto}</span>
+                        <span class="text-[10px] text-gray-400">Visto ${contagem[assunto]} vez(es)</span>
+                    </div>
+                    <span class="mapa-badge ${cfg.cls} flex-shrink-0" onclick="ciclararStatusMapa('${alunoId}', '${assunto.replace(/'/g,"\\'")}')">
+                        ${cfg.label}
+                    </span>
+                </div>`;
+        }).join('');
+    }
+
+    /* =============================================
+       FIX #2: STATUS CLICÁVEL NO ACERVO DE ACORDES E VOICINGS
+    ============================================= */
+
+    function ciclararStatusAcorde(alunoId, nomeSh) {
+        if (!alunoAcordes[alunoId]) alunoAcordes[alunoId] = {};
+        const ac = alunoAcordes[alunoId][nomeSh];
+        if (!ac) return;
+        ac.status = CICLO_STATUS[ac.status || 'desenvolvendo'];
+        salvarAlunoAcordes();
+        renderAcervoAcordes(alunoId);
+    }
+
+    function ciclararStatusVoicing(alunoId, nomeV) {
+        if (!alunoVoicings[alunoId]) alunoVoicings[alunoId] = {};
+        const v = alunoVoicings[alunoId][nomeV];
+        if (!v) return;
+        v.status = CICLO_STATUS[v.status || 'desenvolvendo'];
+        salvarAlunoVoicings();
+        renderAcervoVoicings(alunoId);
+    }
+
+    function ciclararStatusRepertorio(alunoId, nomeR) {
+        if (!alunoRepertorios[alunoId]) return;
+        const r = alunoRepertorios[alunoId].find(x => x.nome === nomeR);
+        if (!r) return;
+        r.status = CICLO_STATUS[r.status || 'desenvolvendo'];
+        salvarAlunoRepertorios();
+        renderRepertorioAluno(alunoId);
+    }
+
+    /* Toggle expandir/recolher detalhe do item (voicing/shape) */
+    function toggleDetalhe(detId, btnId) {
+        const d = document.getElementById(detId);
+        if (!d) return;
+        d.classList.toggle('hidden');
+        const b = document.getElementById(btnId);
+        if (b) b.innerText = d.classList.contains('hidden') ? '▸' : '▾';
+    }
+
+    /* Mini-diagrama de shape em HTML (versão compacta do gerado no PDF) */
+    function renderMiniShapeHTML(sh) {
+        const nStr = sh.numStrings || (sh.strings ? sh.strings.length : 6);
+        const startFret = sh.startFret || 1;
+        const pSpacingX = 18;
+        const rowH = 26;
+        const boardW = (nStr - 1) * pSpacingX;
+        let top = '';
+        for (let c = 0; c < nStr; c++) {
+            const x = c * pSpacingX;
+            const st = (sh.strings && sh.strings[c]) || 'O';
+            const color = st === 'X' ? '#ef4444' : (st === '●' ? '#111827' : '#16a34a');
+            top += `<div style="position:absolute;left:${x}px;top:0;transform:translateX(-50%);width:14px;text-align:center;font-weight:700;font-size:10px;color:${color};">${st}</div>`;
+        }
+        let fingers = '';
+        const bf = parseInt(sh.barreFret);
+        if (bf >= 1) {
+            const bTop = (bf - 1) * rowH + rowH/2;
+            const bWidth = (parseInt(sh.barreTo) - 1) * pSpacingX + 4;
+            fingers += `<div style="position:absolute;background:#1e293b;height:7px;border-radius:4px;top:${bTop}px;left:-2px;width:${bWidth}px;transform:translateY(-50%);z-index:15;"></div>`;
+        }
+        for (let casa = 0; casa < 4; casa++) {
+            const cTop = casa * rowH + rowH/2;
+            for (let cv = 0; cv < nStr; cv++) {
+                const cr = (nStr - 1) - cv;
+                const dedo = sh.matrix && sh.matrix[casa] && sh.matrix[casa][cr];
+                if (dedo) {
+                    const x = cv * pSpacingX;
+                    fingers += `<div style="position:absolute;background:#1e293b;color:#fff;font-weight:700;border-radius:50%;width:16px;height:16px;text-align:center;line-height:16px;font-size:9px;top:${cTop}px;left:${x}px;margin-top:-8px;margin-left:-8px;z-index:20;">${dedo}</div>`;
+                }
+            }
+        }
+        const nut = startFret === 1
+            ? `<div style="position:absolute;left:0;right:0;height:3px;background:#1e293b;top:0;"></div>`
+            : `<div style="position:absolute;left:0;right:0;height:1px;background:#9ca3af;top:0;"></div>`;
+        const lbl = startFret > 1
+            ? `<div style="position:absolute;left:-22px;top:6px;font-weight:700;font-size:10px;color:#b45309;">${startFret}fr</div>`
+            : '';
+        const vStr = Array.from({length:nStr},(_,i)=>i*pSpacingX);
+        return `
+        <div style="position:relative;width:${boardW+4}px;height:14px;margin-left:26px;margin-bottom:2px;">${top}</div>
+        <div style="position:relative;width:${boardW+4}px;height:${4*rowH}px;border-bottom:1px solid #4b5563;margin-left:26px;">
+            ${lbl}${nut}
+            <div style="position:absolute;left:0;right:0;height:1px;background:#9ca3af;top:${rowH}px;"></div>
+            <div style="position:absolute;left:0;right:0;height:1px;background:#9ca3af;top:${2*rowH}px;"></div>
+            <div style="position:absolute;left:0;right:0;height:1px;background:#9ca3af;top:${3*rowH}px;"></div>
+            ${vStr.map(x=>`<div style="position:absolute;top:0;bottom:0;width:1px;background:#4b5563;left:${x}px;"></div>`).join('')}
+            ${fingers}
+        </div>`;
+    }
+
+    function renderAcervoAcordes(alunoId) {
+        const container = document.getElementById(`acervo-acordes-${alunoId}`);
+        if (!container) return;
+        const acordes = alunoAcordes[alunoId] || {};
+        const keys = Object.keys(acordes);
+        if (keys.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400 italic">Nenhum shape adicionado.</p>';
+            return;
+        }
+        container.innerHTML = keys.map(nome => {
+            const sh = acordes[nome];
+            const st = sh.status || 'desenvolvendo';
+            const cfg = STATUS_CONFIG[st];
+            const safe = nome.replace(/'/g,"\\'");
+            const detId = `det-sh-${alunoId}-${btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'')}`;
+            const btnId = detId + '-btn';
+            return `
+                <div class="bg-slate-50 rounded-xl border border-gray-100 text-xs">
+                    <div class="p-2.5 flex justify-between items-center gap-2">
+                        <button type="button" onclick="toggleDetalhe('${detId}','${btnId}')" class="flex items-center gap-1.5 min-w-0 text-left hover:text-blue-600 transition">
+                            <span id="${btnId}" class="text-gray-400 text-[10px]">▸</span>
+                            <strong class="text-slate-700 truncate">🎸 Shape: ${nome}</strong>
+                        </button>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <span class="mapa-badge ${cfg.cls}" onclick="ciclararStatusAcorde('${alunoId}','${safe}')">${cfg.label}</span>
+                            <button onclick="removerAcordeAcervo('${alunoId}','${safe}')" title="Remover shape" class="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center text-xs">✕</button>
+                        </div>
+                    </div>
+                    <div id="${detId}" class="hidden px-3 pb-3 pt-1 border-t border-gray-100 bg-white rounded-b-xl">
+                        ${renderMiniShapeHTML(sh)}
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    function renderAcervoVoicings(alunoId) {
+        const container = document.getElementById(`acervo-voicings-${alunoId}`);
+        if (!container) return;
+        const voicings = alunoVoicings[alunoId] || {};
+        const keys = Object.keys(voicings);
+        if (keys.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400 italic">Nenhum voicing adicionado.</p>';
+            return;
+        }
+        container.innerHTML = keys.map(nome => {
+            const v = voicings[nome];
+            const st = v.status || 'desenvolvendo';
+            const cfg = STATUS_CONFIG[st];
+            const safe = nome.replace(/'/g,"\\'");
+            const detId = `det-vo-${alunoId}-${btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'')}`;
+            const btnId = detId + '-btn';
+            const md = v.md || '—';
+            const me = v.me || '—';
+            return `
+                <div class="bg-slate-50 rounded-xl border border-gray-100 text-xs">
+                    <div class="p-2.5 flex justify-between items-center gap-2">
+                        <button type="button" onclick="toggleDetalhe('${detId}','${btnId}')" class="flex items-center gap-1.5 min-w-0 text-left hover:text-blue-600 transition">
+                            <span id="${btnId}" class="text-gray-400 text-[10px]">▸</span>
+                            <strong class="text-slate-700 truncate">🎹 ${nome}</strong>
+                        </button>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <span class="mapa-badge ${cfg.cls}" onclick="ciclararStatusVoicing('${alunoId}','${safe}')">${cfg.label}</span>
+                            <button onclick="removerVoicingAcervo('${alunoId}','${safe}')" title="Remover voicing" class="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center text-xs">✕</button>
+                        </div>
+                    </div>
+                    <div id="${detId}" class="hidden px-3 pb-3 pt-2 border-t border-gray-100 bg-white rounded-b-xl space-y-1">
+                        <div class="flex gap-2"><span class="font-semibold text-indigo-700 w-12 flex-shrink-0">M.D:</span><span class="text-slate-700 font-mono break-all">${md}</span></div>
+                        <div class="flex gap-2"><span class="font-semibold text-indigo-700 w-12 flex-shrink-0">M.E:</span><span class="text-slate-700 font-mono break-all">${me}</span></div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    function renderRepertorioAluno(alunoId) {
+        const container = document.getElementById(`repertorio-aluno-${alunoId}`);
+        if (!container) return;
+        const reps = alunoRepertorios[alunoId] || [];
+        if (reps.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400 italic">Nenhuma música vinculada.</p>';
+            return;
+        }
+        container.innerHTML = reps.map(r => {
+            const _safe = r.nome.replace(/'/g,"\\'");
+            const st = r.status || 'desenvolvendo';
+            const cfg = STATUS_CONFIG[st];
+            return `
+            <div class="p-2 bg-emerald-50/60 text-emerald-900 border border-emerald-100 rounded-lg flex items-center justify-between gap-2 text-xs">
+                <span class="flex items-center gap-2 min-w-0"><span>🎵</span><span class="truncate">${r.nome}</span></span>
+                <div class="flex items-center gap-1.5 flex-shrink-0">
+                    <span class="mapa-badge ${cfg.cls}" onclick="ciclararStatusRepertorio('${alunoId}','${_safe}')">${cfg.label}</span>
+                    <button onclick="removerRepertorioAluno('${alunoId}','${_safe}')" title="Remover música" class="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center text-xs">✕</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function removerAcordeAcervo(alunoId, nome) {
+        if (!confirm('Remover o shape "' + nome + '" do acervo?')) return;
+        if (alunoAcordes[alunoId]) {
+            delete alunoAcordes[alunoId][nome];
+            salvarAlunoAcordes();
+            renderAcervoAcordes(alunoId);
+            if (typeof atualizarDatalists === 'function') atualizarDatalists();
+        }
+    }
+
+    function removerVoicingAcervo(alunoId, nome) {
+        if (!confirm('Remover o voicing "' + nome + '" do acervo?')) return;
+        if (alunoVoicings[alunoId]) {
+            delete alunoVoicings[alunoId][nome];
+            salvarAlunoVoicings();
+            renderAcervoVoicings(alunoId);
+            if (typeof atualizarDatalists === 'function') atualizarDatalists();
+        }
+    }
+
+    function removerRepertorioAluno(alunoId, nome) {
+        if (!confirm('Remover a música "' + nome + '" do repertório?')) return;
+        if (alunoRepertorios[alunoId]) {
+            alunoRepertorios[alunoId] = alunoRepertorios[alunoId].filter(r => r.nome !== nome);
+            salvarAlunoRepertorios();
+            renderRepertorioAluno(alunoId);
+            if (typeof atualizarDatalists === 'function') atualizarDatalists();
+        }
+    }
+
+    /* =============================================
+       GERENCIADOR DE SUGESTÕES (na tela de registrar aula)
+    ============================================= */
+    function abrirGerenciadorSugestoes(tipo) {
+        let alunoId = '';
+        if (tipo !== 'assuntos') {
+            const sel = document.getElementById('relatorio-aluno-select');
+            alunoId = sel ? sel.value : '';
+            if (!alunoId) { alert('Selecione um aluno primeiro!'); return; }
+        }
+
+        const titulos = {
+            repertorio: '🎵 Repertório salvo',
+            voicings:   '🎹 Voicings salvos',
+            shapes:     '🎸 Shapes / Acordes salvos',
+            assuntos:   '📚 Assuntos salvos (global)'
+        };
+        document.getElementById('gerenciar-sugestoes-titulo').innerHTML =
+            '<i class="fa-solid fa-trash text-red-400"></i> ' + (titulos[tipo] || 'Sugestões salvas');
+
+        let nomes = [];
+        if (tipo === 'repertorio')    nomes = (alunoRepertorios[alunoId] || []).map(r => r.nome);
+        else if (tipo === 'voicings') nomes = Object.keys(alunoVoicings[alunoId] || {});
+        else if (tipo === 'shapes')   nomes = Object.keys(alunoAcordes[alunoId]  || {});
+        else if (tipo === 'assuntos') nomes = [...globalAssuntos];
+
+        const lista = document.getElementById('gerenciar-sugestoes-lista');
+        if (nomes.length === 0) {
+            lista.innerHTML = '<p class="text-sm text-gray-400 italic text-center py-6">Nenhuma sugestão salva.</p>';
+        } else {
+            lista.innerHTML = nomes.sort().map(nome => {
+                const safe = nome.replace(/'/g,"\\'");
+                return `<div class="flex items-center justify-between gap-2 p-2 bg-gray-50 border border-gray-200 rounded text-sm">
+                    <span class="truncate">${nome}</span>
+                    <button onclick="removerSugestaoGerenciador('${tipo}','${alunoId}','${safe}')" class="text-red-500 hover:bg-red-50 rounded-full w-7 h-7 flex items-center justify-center flex-shrink-0" title="Remover">✕</button>
+                </div>`;
+            }).join('');
+        }
+        document.getElementById('modal-gerenciar-sugestoes').classList.remove('hidden');
+    }
+
+    function removerSugestaoGerenciador(tipo, alunoId, nome) {
+        if (!confirm('Remover "' + nome + '" das sugestões?')) return;
+        if (tipo === 'repertorio') {
+            alunoRepertorios[alunoId] = (alunoRepertorios[alunoId] || []).filter(r => r.nome !== nome);
+            salvarAlunoRepertorios();
+        } else if (tipo === 'voicings') {
+            if (alunoVoicings[alunoId]) delete alunoVoicings[alunoId][nome];
+            salvarAlunoVoicings();
+        } else if (tipo === 'shapes') {
+            if (alunoAcordes[alunoId]) delete alunoAcordes[alunoId][nome];
+            salvarAlunoAcordes();
+        } else if (tipo === 'assuntos') {
+            globalAssuntos = globalAssuntos.filter(a => a !== nome);
+            salvarGlobalAssuntos();
+        }
+        atualizarDatalists();
+        abrirGerenciadorSugestoes(tipo);
+    }
+
+
+    /* =============================================
+       PERFIL DO ALUNO
+    ============================================= */
+
+    function verPerfilAluno(id) {
+        const aluno = dbAlunos.find(a => a.id === id);
+        if (!aluno) return;
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.getElementById('tab-perfil-aluno').classList.remove('hidden');
+
+        const fotoSrc = aluno.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
+        const isTeclas = ['Piano', 'Teclado'].includes(aluno.instrumento);
+        const aulasAluno = dbAulas.filter(au => au.alunoId === id);
+
+        /* FIX #3: pega o campo planejamento salvo separadamente */
+        let ultimoPlanejamento = "Nenhum planejamento registrado para a próxima aula.";
+        if (aulasAluno.length > 0) {
+            const ordenadas = [...aulasAluno].sort((a, b) => new Date(b.data) - new Date(a.data));
+            if (ordenadas[0].planejamento && ordenadas[0].planejamento.trim()) {
+                ultimoPlanejamento = ordenadas[0].planejamento.trim();
+            }
+        }
+
+        document.getElementById('conteudo-perfil-aluno').innerHTML = `
+            <!-- Alerta de próxima aula (FIX #3) -->
+            <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-2 text-amber-900 shadow-2xs">
+                <span class="text-lg mt-0.5 flex-shrink-0">📌</span>
+                <div class="min-w-0">
+                    <strong class="block text-xs uppercase tracking-wider font-bold">Próxima Aula — Último Planejamento Salvo:</strong>
+                    <p class="text-sm font-medium text-amber-800 mt-0.5 whitespace-pre-line">${ultimoPlanejamento}</p>
+                </div>
+            </div>
+
+            <!-- Grid principal -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-5 items-start">
+
+                <!-- Coluna 1: Info do aluno -->
+                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
+                    <div class="text-center space-y-2">
+                        <img src="${fotoSrc}" class="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover mx-auto border-3 border-blue-100 shadow-2xs">
+                        <h3 class="text-lg md:text-xl font-bold text-slate-800">${aluno.nome}</h3>
+                        <p class="text-xs text-gray-400 font-medium">PDF: "${aluno.nomePdf || aluno.nome}"</p>
+                    </div>
+                    <hr class="border-gray-100">
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <p class="flex items-center gap-2"><span>📞</span> <strong>Telefone:</strong> ${aluno.telefone || '-'}</p>
+                        <p class="flex items-center gap-2"><span>📍</span> <strong>Endereço:</strong> ${aluno.endereco || '-'}</p>
+                        <p class="flex items-center gap-2"><span>🎸</span> <strong>Instrumento:</strong> ${aluno.instrumento} (${aluno.nivel})</p>
+                        <p class="flex items-center gap-2"><span>🖥️</span> <strong>Modalidade:</strong> ${aluno.modalidade}</p>
+                        <p class="flex items-center gap-2"><span>🧑‍🎤</span> <strong>Estilos:</strong> ${aluno.estilos || '-'}</p>
+                        <p class="flex items-center gap-2"><span>🎯</span> <strong>Objetivo:</strong> ${aluno.objetivo || '-'}</p>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-xl border border-gray-100 text-xs text-gray-500">
+                        <strong>💡 Como chegou:</strong> <span>${aluno.comoChegou || 'Não informado'}</span>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <button onclick="imprimirEvolucaoMensal('${aluno.id}')" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-xs">📊 Imprimir Evolução Mensal</button>
+                        <button onclick="gerarResumoMes('${aluno.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-xs">📋 Resumo do Mês para o Aluno</button>
+                    </div>
+                </div>
+
+                <!-- Coluna 2: Mapas e acervos -->
+                <div class="lg:col-span-4 space-y-4">
+
+                    <!-- Mapa de Conhecimento -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs">
+                        <h4 class="font-bold text-sm text-slate-800 pb-2 border-b border-gray-100 flex items-center justify-between gap-2">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-chart-simple text-blue-500"></i> Mapa de Conhecimento</span>
+                            <span class="text-[10px] text-gray-400 font-normal italic">Clique no status</span>
+                        </h4>
+                        <div class="mt-3 space-y-2 max-h-52 overflow-y-auto pr-1" id="mapa-conhecimento-${aluno.id}"></div>
+                    </div>
+
+                    <!-- FIX #1 + FIX #2: Acervo por aluno com status clicável -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs">
+                        <h4 class="font-bold text-sm text-slate-800 pb-2 border-b border-gray-100 flex items-center justify-between gap-2">
+                            <span class="flex items-center gap-2">
+                                <i class="fa-solid fa-layer-group text-indigo-500"></i>
+                                ${isTeclas ? 'Acervo de Voicings' : 'Acervo de Acordes / Shapes'}
+                            </span>
+                            <span class="text-[10px] text-gray-400 font-normal italic">Clique no status</span>
+                        </h4>
+                        <div class="mt-3 space-y-2 max-h-44 overflow-y-auto pr-1"
+                             id="${isTeclas ? `acervo-voicings-${aluno.id}` : `acervo-acordes-${aluno.id}`}">
+                        </div>
+                    </div>
+
+                    <!-- FIX #1: Repertório por aluno -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs">
+                        <h4 class="font-bold text-sm text-slate-800 pb-2 border-b border-gray-100 flex items-center gap-2">
+                            <i class="fa-solid fa-music text-green-600"></i> Repertório Mapeado
+                        </h4>
+                        <div class="mt-3 space-y-1.5 max-h-40 overflow-y-auto text-xs text-slate-700 pr-1" id="repertorio-aluno-${aluno.id}"></div>
+                    </div>
+                </div>
+
+                <!-- Coluna 3: Histórico de aulas -->
+                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs">
+                    <h4 class="font-bold text-sm text-slate-800 pb-2 border-b border-gray-100 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-purple-500"></i> Histórico de Aulas
+                    </h4>
+                    <div class="mt-3 space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                        ${aulasAluno.length === 0
+                            ? `<p class="text-xs text-gray-400 italic text-center py-8">Nenhum registro de aula localizado para este aluno.</p>`
+                            : [...aulasAluno].sort((a,b) => new Date(b.data)-new Date(a.data)).map(au => `
+                                <div class="border border-gray-200 rounded-xl overflow-hidden text-xs bg-slate-50">
+                                    <div class="aula-accordion-header bg-slate-100 p-2.5 font-bold text-slate-700 flex justify-between items-center border-b" onclick="toggleAcordeonAula(this)">
+                                        <span>📅 Aula — ${au.data.split('-').reverse().join('/')}</span>
+                                        <i class="fa-solid fa-chevron-down aula-accordion-chevron text-gray-400"></i>
+                                    </div>
+                                    <div class="aula-accordion-body p-3 text-slate-600 whitespace-pre-line bg-white leading-relaxed font-sans">
+                                        ${au.resumo}
+                                    </div>
+                                </div>
+                            `).join('')
+                        }
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Renderiza seções dinâmicas
+        renderMapaConhecimento(aluno.id);
+        if (isTeclas) renderAcervoVoicings(aluno.id);
+        else          renderAcervoAcordes(aluno.id);
+        renderRepertorioAluno(aluno.id);
+    }
+
+    function toggleAcordeonAula(header) {
+        const body    = header.nextElementSibling;
+        const chevron = header.querySelector('.aula-accordion-chevron');
+        const isOpen  = body.classList.contains('open');
+        body.classList.toggle('open', !isOpen);
+        chevron.classList.toggle('open', !isOpen);
+    }
+
+    /* =============================================
+       RESUMO DO MÊS
+    ============================================= */
+
+    function gerarResumoMes(alunoId) {
+        const aluno = dbAlunos.find(a => a.id === alunoId);
+        if (!aluno) return;
+        const hoje = new Date();
+        const _nomeMesesPick = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        const _opts = _nomeMesesPick.map((n,i)=>`${String(i+1).padStart(2,'0')} - ${n}`).join('\n');
+        const _def = String(hoje.getMonth()+1).padStart(2,'0')+'/'+hoje.getFullYear();
+        const entrada = prompt('Escolha o mês do resumo (MM/AAAA):\n\n'+_opts+'\n\nDigite no formato MM/AAAA (ex: 03/2025).\nDeixe em branco para usar o mês atual.', _def);
+        if (entrada === null) return;
+        let mesAtual = hoje.getMonth(), anoAtual = hoje.getFullYear();
+        if (entrada.trim()) {
+            const _m = entrada.trim().match(/^(\d{1,2})\/(\d{4})$/);
+            if (!_m) { alert('Formato inválido. Use MM/AAAA (ex: 03/2025).'); return; }
+            mesAtual = parseInt(_m[1],10) - 1;
+            anoAtual = parseInt(_m[2],10);
+            if (mesAtual < 0 || mesAtual > 11) { alert('Mês inválido.'); return; }
+        }
+        const aulasMes = dbAulas.filter(au => {
+            if (au.alunoId !== alunoId) return false;
+            const d = new Date(au.data);
+            return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+        });
+        const mapa = getMapaAluno(alunoId);
+        const assuntosMes = {};
+        aulasMes.forEach(au => { (au.assuntos || []).forEach(ass => { assuntosMes[ass] = (assuntosMes[ass] || 0) + 1; }); });
+        const musicasMes = new Set();
+        aulasMes.forEach(au => { (au.musicas || []).forEach(m => musicasMes.add(m)); });
+        const dominados    = Object.keys(assuntosMes).filter(a => mapa[a] === 'dominado');
+        const desenvolvendo= Object.keys(assuntosMes).filter(a => !mapa[a] || mapa[a] === 'desenvolvendo');
+        const revisar      = Object.keys(assuntosMes).filter(a => mapa[a] === 'revisar');
+
+        // Shapes/acordes trabalhados no mês (com fallback para aulas antigas)
+        const acervoSh = alunoAcordes[alunoId] || {};
+        const shapesMesSet = new Set();
+        aulasMes.forEach(au => {
+            (au.shapes||[]).forEach(sh => shapesMesSet.add(sh));
+            if ((!au.shapes || au.shapes.length === 0) && au.resumo) {
+                Object.keys(acervoSh).forEach(n => {
+                    const _re = new RegExp('(^|\\W)' + n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(\\W|$)', 'i');
+                    if (_re.test(au.resumo)) shapesMesSet.add(n);
+                });
+            }
+        });
+        const shStatus = (n) => (acervoSh[n] && acervoSh[n].status) || 'desenvolvendo';
+        const shDominados   = [...shapesMesSet].filter(n => shStatus(n) === 'dominado');
+        const shDesenv      = [...shapesMesSet].filter(n => shStatus(n) === 'desenvolvendo');
+        const shRevisar     = [...shapesMesSet].filter(n => shStatus(n) === 'revisar');
+
+        // Voicings trabalhados no mês (com fallback para aulas antigas)
+        const acervoVo = alunoVoicings[alunoId] || {};
+        const voicMesSet = new Set();
+        aulasMes.forEach(au => {
+            (au.voicings||[]).forEach(v => voicMesSet.add(v));
+            if ((!au.voicings || au.voicings.length === 0) && au.resumo) {
+                Object.keys(acervoVo).forEach(n => {
+                    const _re = new RegExp('(^|\\W)' + n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(\\W|$)', 'i');
+                    if (_re.test(au.resumo)) voicMesSet.add(n);
+                });
+            }
+        });
+        const voStatus = (n) => (acervoVo[n] && acervoVo[n].status) || 'desenvolvendo';
+        const voDominados = [...voicMesSet].filter(n => voStatus(n) === 'dominado');
+        const voDesenv    = [...voicMesSet].filter(n => voStatus(n) === 'desenvolvendo');
+        const voRevisar   = [...voicMesSet].filter(n => voStatus(n) === 'revisar');
+        const nomeMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        const mesNome = nomeMeses[mesAtual];
+        const pWin = window.open('','_blank');
+        pWin.document.write(`<html><head><title>Resumo_${mesNome}_${aluno.nomePdf||aluno.nome}</title>
+        <style>body{font-family:sans-serif;background:#f8fafc;padding:30px;color:#1e293b}.card{background:white;border-radius:14px;border:1px solid #e5e7eb;padding:24px;max-width:700px;margin:0 auto}h2{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 10px;padding-bottom:6px;border-bottom:2px solid}.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;margin:3px 3px 3px 0}.bg-v{background:#dcfce7;color:#166534}.bg-a{background:#fef9c3;color:#854d0e}.bg-r{background:#fee2e2;color:#991b1b}.bg-b{background:#dbeafe;color:#1e40af}.metric{display:inline-block;background:#f1f5f9;border-radius:10px;padding:12px 20px;text-align:center;margin:4px}.metric-num{display:block;font-size:28px;font-weight:800;color:#1e293b}.metric-label{font-size:11px;color:#64748b}.motivacao{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;border-radius:12px;padding:18px 22px;margin-top:20px}.no-print{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}@media print{.no-print{display:none!important}body{background:white;padding:0}.card{border:none}}</style>
+        </head><body><div class="card">
+        <div class="no-print"><span style="font-size:12px;color:#64748b">Resumo Mensal — ${mesNome} ${anoAtual}</span><button onclick="window.print()" style="background:#4f46e5;color:white;border:none;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Imprimir / Salvar PDF</button></div>
+        <div style="border-left:5px solid #4f46e5;padding-left:14px;margin-bottom:20px"><h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0">Resumo de Evolução — ${mesNome} ${anoAtual}</h1><p style="color:#64748b;font-size:13px;margin:4px 0 0 0">Aluno(a): <strong>${aluno.nomePdf||aluno.nome}</strong> · ${aluno.instrumento} · ${aluno.nivel}</p></div>
+        <div><div class="metric"><span class="metric-num">${aulasMes.length}</span><span class="metric-label">Aulas no mês</span></div><div class="metric"><span class="metric-num">${Object.keys(assuntosMes).length}</span><span class="metric-label">Assuntos vistos</span></div><div class="metric"><span class="metric-num">${musicasMes.size}</span><span class="metric-label">Músicas trabalhadas</span></div><div class="metric"><span class="metric-num">${dominados.length}</span><span class="metric-label">Conteúdos dominados</span></div></div>
+        ${dominados.length>0?`<h2 style="color:#166534;border-color:#16a34a">✅ O que você já domina</h2><div>${dominados.map(a=>`<span class="badge bg-v">${a}</span>`).join('')}</div>`:''}
+        ${desenvolvendo.length>0?`<h2 style="color:#854d0e;border-color:#ca8a04">🟡 Em desenvolvimento</h2><div>${desenvolvendo.map(a=>`<span class="badge bg-a">${a}</span>`).join('')}</div>`:''}
+        ${revisar.length>0?`<h2 style="color:#991b1b;border-color:#dc2626">🔴 Precisa de mais atenção</h2><div>${revisar.map(a=>`<span class="badge bg-r">${a}</span>`).join('')}</div>`:''}
+        ${musicasMes.size>0?`<h2 style="color:#1e40af;border-color:#2563eb">🎵 Repertório trabalhado</h2><div>${[...musicasMes].map(m=>`<span class="badge bg-b">${m}</span>`).join('')}</div>`:''}
+        ${shapesMesSet.size>0?`<h2 style="color:#b45309;border-color:#d97706">🎸 Acordes / Shapes do mês</h2>
+            ${shDominados.length>0?`<div style="margin:6px 0"><strong style="font-size:11px;color:#166534">✅ Dominados:</strong> ${shDominados.map(n=>`<span class=\"badge bg-v\">${n}</span>`).join('')}</div>`:''}
+            ${shDesenv.length>0?`<div style="margin:6px 0"><strong style="font-size:11px;color:#854d0e">🟡 Em desenvolvimento:</strong> ${shDesenv.map(n=>`<span class=\"badge bg-a\">${n}</span>`).join('')}</div>`:''}
+            ${shRevisar.length>0?`<div style="margin:6px 0"><strong style="font-size:11px;color:#991b1b">🔴 Precisa revisar:</strong> ${shRevisar.map(n=>`<span class=\"badge bg-r\">${n}</span>`).join('')}</div>`:''}`:''}
+        ${voicMesSet.size>0?`<h2 style="color:#4338ca;border-color:#4f46e5">🎹 Voicings do mês</h2>
+            ${voDominados.length>0?`<div style="margin:6px 0"><strong style="font-size:11px;color:#166534">✅ Dominados:</strong> ${voDominados.map(n=>`<span class=\"badge bg-v\">${n}</span>`).join('')}</div>`:''}
+            ${voDesenv.length>0?`<div style="margin:6px 0"><strong style="font-size:11px;color:#854d0e">🟡 Em desenvolvimento:</strong> ${voDesenv.map(n=>`<span class=\"badge bg-a\">${n}</span>`).join('')}</div>`:''}
+            ${voRevisar.length>0?`<div style="margin:6px 0"><strong style="font-size:11px;color:#991b1b">🔴 Precisa revisar:</strong> ${voRevisar.map(n=>`<span class=\"badge bg-r\">${n}</span>`).join('')}</div>`:''}`:''}
+        ${aulasMes.length===0?'<div style="text-align:center;padding:30px;color:#94a3b8;font-style:italic">Nenhuma aula registrada este mês ainda.</div>':''}
+        <div class="motivacao"><p style="font-size:14px;font-weight:700;margin:0 0 6px 0">🚀 Parabéns pelo progresso, ${aluno.nomePdf||aluno.nome.split(' ')[0]}!</p><p style="font-size:12px;margin:0;opacity:.9">${dominados.length>0?`Você já domina <strong>${dominados.join(', ')}</strong>. Isso é resultado de dedicação!`:'Cada aula é um passo à frente. Continue assim!'}</p></div>
+        <p style="font-size:10px;color:#94a3b8;text-align:center;margin-top:20px"></p>
+        </div></body></html>`);
+        pWin.document.close();
+    }
+
+    /* =============================================
+       TELA DE RELATÓRIO
+    ============================================= */
+
+    function prepararTelaRelatorio() {
+        const select = document.getElementById('relatorio-aluno-select');
+        select.innerHTML = '<option value="">-- Selecione o Aluno --</option>';
+        dbAlunos.filter(a => !a.pausado).forEach(aluno => {
+            select.innerHTML += `<option value="${aluno.id}">${aluno.nomePdf || aluno.nome} (${aluno.instrumento})</option>`;
+        });
+        document.getElementById('dados-rapidos-aluno').classList.add('hidden');
+        document.getElementById('secao-teclas-voicings').classList.add('hidden');
+        document.getElementById('secao-cordas-shapes').classList.add('hidden');
+        ['container-assuntos','container-repertorio','container-voicings','container-shapes','container-links','container-metas'].forEach(id => {
+            document.getElementById(id).innerHTML = '';
+        });
+        document.getElementById('box-editor-relatorio').classList.add('hidden');
+        document.getElementById('r-data').value = new Date().toISOString().split('T')[0];
+    }
+
+    function carregarDadosAlunoRelatorio() {
+        const id = document.getElementById('relatorio-aluno-select').value;
+        if (!id) return;
+        const aluno = dbAlunos.find(a => a.id === id);
+        document.getElementById('r-inst').innerText = aluno.instrumento;
+        document.getElementById('r-mod').innerText  = aluno.modalidade;
+        document.getElementById('r-niv').innerText  = aluno.nivel;
+        document.getElementById('dados-rapidos-aluno').classList.remove('hidden');
+        const isTeclas = ['Piano','Teclado'].includes(aluno.instrumento);
+        document.getElementById('secao-teclas-voicings').classList.toggle('hidden', !isTeclas);
+        document.getElementById('secao-cordas-shapes').classList.toggle('hidden',  isTeclas);
+        prepararTelaRelatorioLinhas();
+    }
+
+    function prepararTelaRelatorioLinhas() {
+        ['container-assuntos','container-repertorio','container-links','container-metas'].forEach(id => {
+            document.getElementById(id).innerHTML = '';
+        });
+        adicionarAssuntoRow();
+        adicionarRepertorioRow();
+        adicionarMetaRow();
+        atualizarDatalists();
+    }
+
+    function adicionarAssuntoRow() {
+        const div = document.createElement('div');
+        div.className = "flex flex-col md:flex-row gap-2 bg-gray-50 p-3 rounded-lg border";
+        div.innerHTML = `
+            <input type="text" list="datalist-assuntos" placeholder="Nome do Assunto" class="assunto-nome flex-1 p-2 bg-white border rounded text-sm">
+            <input type="text" placeholder="Explicação prática" class="assunto-expl flex-1 p-2 bg-white border rounded text-sm">
+            <button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2 self-center">✕</button>`;
+        document.getElementById('container-assuntos').appendChild(div);
+    }
+
+    function adicionarRepertorioRow() {
+        const div = document.createElement('div');
+        div.className = "flex gap-2 items-center";
+        div.innerHTML = `<input type="text" list="datalist-repertorios" placeholder="Música / Canção" class="musica-nome flex-1 p-2 bg-white border rounded text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2">✕</button>`;
+        document.getElementById('container-repertorio').appendChild(div);
+    }
+
+    function adicionarVoicingRow() {
+        const div = document.createElement('div');
+        div.className = "flex flex-col md:flex-row gap-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-200";
+        div.innerHTML = `
+            <input type="text" list="datalist-voicings" placeholder="Nome do Voicing" class="voicing-nome p-2 bg-white border rounded text-sm md:w-1/4">
+            <input type="text" placeholder="Mão Direita (MD)" class="voicing-md p-2 bg-white border rounded text-sm flex-1">
+            <input type="text" placeholder="Mão Esquerda (ME)" class="voicing-me p-2 bg-white border rounded text-sm flex-1">
+            <button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2 self-center">✕</button>`;
+        document.getElementById('container-voicings').appendChild(div);
+    }
+
+    function adicionarShapeAcordeRow() {
+        const rowId = 'shape-' + Date.now();
+        const alunoIdAtual = document.getElementById('relatorio-aluno-select').value;
+        const instAtual    = alunoIdAtual ? getInstrumentoAluno(alunoIdAtual) : 'Violão';
+        const numStrings   = getNumStrings(instAtual);
+        const extOptions   = Array.from({length:numStrings}, (_,i) => i+1)
+            .map(n => `<option value="${n}"${n===numStrings?' selected':''}>Até ${n}ª</option>`).join('');
+        const div = document.createElement('div');
+        div.className = "p-4 bg-amber-50/40 border border-amber-200 rounded-xl space-y-4";
+        div.id = rowId;
+        div.dataset.numStrings = numStrings;
+        div.innerHTML = `
+            <div class="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                <div class="w-full md:w-1/3">
+                    <label class="block text-xs font-bold text-amber-900 mb-1">Nome do Acorde * <span class="text-gray-500 font-normal">(${instAtual} · ${numStrings} cordas)</span></label>
+                    <input type="text" list="datalist-shapes" placeholder="Ex: C, G7, Bm" class="shape-nome w-full p-2 bg-white border rounded text-sm" onchange="autoPreencherShape('${rowId}', this.value)">
+                </div>
+                <div class="flex gap-3 text-xs flex-wrap">
+                    <div><label class="block font-medium text-gray-700">Casa Inicial</label>
+                        <select class="shape-start-fret p-1.5 border rounded bg-white" onchange="renderVisualBraço('${rowId}')">
+                            ${Array.from({length:15},(_,i)=>i+1).map(n=>`<option value="${n}">${n}ª casa</option>`).join('')}
+                        </select></div>
+                    <div><label class="block font-medium text-gray-700">Pestana (Casa)</label>
+                        <select class="shape-barre-fret p-1.5 border rounded bg-white" onchange="renderVisualBraço('${rowId}')">
+                            <option value="0">Nenhuma</option>${[1,2,3,4].map(c=>`<option value="${c}">Casa ${c}</option>`).join('')}
+                        </select></div>
+                    <div><label class="block font-medium text-gray-700">Extensão Pestana</label>
+                        <select class="shape-barre-to p-1.5 border rounded bg-white" onchange="renderVisualBraço('${rowId}')">
+                            ${extOptions}
+                        </select></div>
+                </div>
+                <button type="button" onclick="this.parentElement.parentElement.remove()" class="text-red-500 font-medium text-sm self-start">Remover Shape</button>
+            </div>
+            <div class="flex flex-col md:flex-row gap-6 items-center justify-center bg-white p-4 rounded-lg border border-gray-100">
+                <div class="flex flex-col items-center">
+                    <div class="flex items-center gap-2">
+                        <div class="text-xs font-bold text-amber-700 w-8 text-right" id="${rowId}-start-label"></div>
+                        <div class="flex flex-col items-center">
+                            <div class="flex justify-between mb-2 text-xs font-bold text-gray-500 pl-[2px]" id="${rowId}-top-markers" style="width:${(numStrings-1)*24.8 + 4}px"></div>
+                            <div class="fretboard-container border-b border-gray-400" id="${rowId}-fretboard" style="width:${(numStrings-1)*24.8 + 4}px"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.getElementById('container-shapes').appendChild(div);
+        div.dataset.matrix  = JSON.stringify(Array(4).fill(0).map(() => Array(numStrings).fill(0)));
+        div.dataset.strings = JSON.stringify(Array(numStrings).fill("O"));
+        renderVisualBraço(rowId);
+    }
+
+    function renderVisualBraço(rowId) {
+        const div = document.getElementById(rowId);
+        if (!div) return;
+        const numStrings = parseInt(div.dataset.numStrings) || 6;
+        let matrix      = JSON.parse(div.dataset.matrix);
+        let stringStates= JSON.parse(div.dataset.strings);
+        let barreFret   = parseInt(div.querySelector('.shape-barre-fret').value);
+        let barreTo     = parseInt(div.querySelector('.shape-barre-to').value);
+        const startSel  = div.querySelector('.shape-start-fret');
+        const startFret = startSel ? parseInt(startSel.value) : 1;
+
+        // Label da casa inicial (à esquerda do braço)
+        const startLabel = document.getElementById(`${rowId}-start-label`);
+        if (startLabel) startLabel.innerText = startFret > 1 ? `${startFret}fr` : '';
+
+        const topContainer = document.getElementById(`${rowId}-top-markers`);
+        topContainer.innerHTML = '';
+        // Reescreve estilos: posicionamento absoluto alinhado às cordas
+        topContainer.className = 'mb-2 text-xs font-bold text-gray-500';
+        topContainer.style.position = 'relative';
+        topContainer.style.height = '18px';
+        topContainer.style.width = `${(numStrings-1)*24.8 + 4}px`;
+        const stringSpacingTop = 24.8;
+        for (let c = 0; c < numStrings; c++) {
+            const state = stringStates[c] || "O";
+            let color = "text-green-600";
+            if (state === "X") color = "text-red-500";
+            if (state === "●") color = "text-gray-900";
+            topContainer.innerHTML += `<span class="cursor-pointer ${color} hover:scale-125 transition" style="position:absolute;top:0;left:${c*stringSpacingTop}px;transform:translateX(-50%);width:18px;text-align:center;display:inline-block;" onclick="toggleStringState('${rowId}', ${c})">${state}</span>`;
+        }
+        const fretboard = document.getElementById(`${rowId}-fretboard`);
+        fretboard.innerHTML = '';
+        fretboard.style.width = `${(numStrings-1)*24.8 + 4}px`;
+        for (let i = 0; i <= 4; i++) {
+            let topPos = i * 40;
+            // Pestana (nut) só quando começa na 1ª casa
+            if (i === 0 && startFret === 1) fretboard.innerHTML += `<div class="string-line-nut" style="top: 0px;"></div>`;
+            else fretboard.innerHTML += `<div class="fret-line" style="top: ${topPos}px;"></div>`;
+        }
+        const stringSpacing = 24.8;
+        for (let c = 0; c < numStrings; c++) {
+            fretboard.innerHTML += `<div class="string-line" style="left: ${c * stringSpacing}px;"></div>`;
+        }
+        if (barreFret >= 1 && barreFret <= 4) {
+            let barreTop = (barreFret - 1) * 40 + 20;
+            let barreWidth = (barreTo - 1) * stringSpacing + 6;
+            fretboard.innerHTML += `<div class="absolute bg-slate-800 rounded-full h-3" style="top:${barreTop}px; left:-3px; width:${barreWidth}px; transform:translateY(-50%); z-index:15; opacity:0.95;"></div>`;
+        }
+        for (let casa = 0; casa < 4; casa++) {
+            let centroCasaTop = casa * 40 + 20;
+            for (let cv = 0; cv < numStrings; cv++) {
+                let cr = (numStrings - 1) - cv;
+                let xPos = cv * stringSpacing;
+                const trigger = document.createElement('div');
+                trigger.className = "click-trigger";
+                trigger.style.top  = `${centroCasaTop}px`;
+                trigger.style.left = `${xPos}px`;
+                trigger.onclick = () => handleMilimetricClick(rowId, casa, cr);
+                fretboard.appendChild(trigger);
+                let dedoAtivo = matrix[casa] && matrix[casa][cr];
+                if (dedoAtivo) {
+                    const dot = document.createElement('div');
+                    dot.className = "fret-note-dot shadow-xs";
+                    dot.style.top  = `${centroCasaTop}px`;
+                    dot.style.left = `${xPos}px`;
+                    dot.innerText  = dedoAtivo;
+                    dot.onclick = e => { e.stopPropagation(); handleMilimetricClick(rowId, casa, cr); };
+                    fretboard.appendChild(dot);
+                }
+            }
+        }
+    }
+
+    function handleMilimetricClick(rowId, casa, cordaRealIndex) {
+        const div = document.getElementById(rowId);
+        let matrix = JSON.parse(div.dataset.matrix);
+        if (matrix[casa][cordaRealIndex]) {
+            matrix[casa][cordaRealIndex] = 0;
+        } else {
+            let dedo = prompt("Digite o número do dedo (1 a 4):", "1");
+            matrix[casa][cordaRealIndex] = ['1','2','3','4'].includes(dedo) ? dedo : '1';
+        }
+        div.dataset.matrix = JSON.stringify(matrix);
+        renderVisualBraço(rowId);
+    }
+
+    function toggleStringState(rowId, stringIndex) {
+        const div = document.getElementById(rowId);
+        let states = JSON.parse(div.dataset.strings);
+        const cycle = { "O": "●", "●": "X", "X": "O" };
+        states[stringIndex] = cycle[states[stringIndex] || "O"];
+        div.dataset.strings = JSON.stringify(states);
+        renderVisualBraço(rowId);
+    }
+
+    function autoPreencherShape(rowId, acNome) {
+        const alunoId = document.getElementById('relatorio-aluno-select').value;
+        const acervos = alunoAcordes[alunoId] || {};
+        if (acervos[acNome]) {
+            const div = document.getElementById(rowId);
+            const sh  = acervos[acNome];
+            div.dataset.matrix     = JSON.stringify(sh.matrix);
+            div.dataset.strings    = JSON.stringify(sh.strings);
+            div.dataset.numStrings = sh.numStrings || (sh.strings ? sh.strings.length : 6);
+            div.querySelector('.shape-barre-fret').value = sh.barreFret || 0;
+            div.querySelector('.shape-barre-to').value   = sh.barreTo   || (sh.strings ? sh.strings.length : 6);
+            const startSel = div.querySelector('.shape-start-fret');
+            if (startSel) startSel.value = sh.startFret || 1;
+            renderVisualBraço(rowId);
+        }
+    }
+
+    function adicionarLinkRow() {
+        const div = document.createElement('div');
+        div.className = "flex flex-col md:flex-row gap-2 bg-cyan-50/50 p-2 rounded-lg border border-cyan-200";
+        div.innerHTML = `
+            <input type="text" placeholder="Título do Material" class="link-titulo p-2 bg-white border rounded text-sm md:w-1/3">
+            <input type="url" placeholder="Link de acesso (https://...)" class="link-url p-2 bg-white border rounded text-sm flex-1">
+            <button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2 self-center">✕</button>`;
+        document.getElementById('container-links').appendChild(div);
+    }
+
+    function adicionarMetaRow() {
+        const div = document.createElement('div');
+        div.className = "flex gap-2 items-center";
+        div.innerHTML = `<input type="text" placeholder="Meta doméstica de treino" class="meta-texto flex-1 p-2 bg-white border rounded text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2">✕</button>`;
+        document.getElementById('container-metas').appendChild(div);
+    }
+
+    function gerarTextoRelatorio() {
+        const id = document.getElementById('relatorio-aluno-select').value;
+        if (!id) return alert("Por favor, selecione um aluno!");
+        const aluno = dbAlunos.find(a => a.id === id);
+        const apelido = aluno.nomePdf ? aluno.nomePdf.trim() : aluno.nome.split(' ')[0];
+
+        let assuntos = [];
+        document.querySelectorAll('#container-assuntos > div').forEach(row => {
+            const nome = row.querySelector('.assunto-nome').value.trim();
+            const expl = row.querySelector('.assunto-expl').value.trim();
+            if (nome) {
+                assuntos.push({nome, expl});
+                if (!globalAssuntos.includes(nome)) globalAssuntos.push(nome);
+            }
+        });
+        salvarGlobalAssuntos();
+
+        let musicas = [];
+        document.querySelectorAll('.musica-nome').forEach(i => { if (i.value.trim()) musicas.push(i.value.trim()); });
+
+        let voicings = [];
+        document.querySelectorAll('#container-voicings > div').forEach(row => {
+            const nome = row.querySelector('.voicing-nome').value.trim();
+            const md   = row.querySelector('.voicing-md').value.trim();
+            const me   = row.querySelector('.voicing-me').value.trim();
+            if (nome) voicings.push({nome, md, me});
+        });
+
+        let shapes = [];
+        document.querySelectorAll('#container-shapes > div').forEach(row => {
+            const nome = row.querySelector('.shape-nome').value.trim();
+            if (nome) shapes.push(nome);
+        });
+
+        let metas = [];
+        document.querySelectorAll('.meta-texto').forEach(i => { if (i.value.trim()) metas.push(i.value.trim()); });
+
+        let textoFinal = `Olá, ${apelido}! Segue o roteiro prático estruturado da nossa aula de hoje:\n\n`;
+        if (assuntos.length > 0) { textoFinal += `📚 CONTEÚDOS E DIRETRIZES:\n`; assuntos.forEach(ass => { textoFinal += `• ${ass.nome}: ${ass.expl}\n`; }); textoFinal += `\n`; }
+        if (musicas.length > 0)  textoFinal += `🎵 REPERTÓRIO DIÁRIO:\n• ${musicas.join('\n• ')}\n\n`;
+        if (voicings.length > 0) { textoFinal += `🎹 ESTRUTURAS DE VOICING:\n`; voicings.forEach(v => { textoFinal += `• ${v.nome} -> M.D: [${v.md}] | M.E: [${v.me}]\n`; }); textoFinal += `\n`; }
+        if (shapes.length > 0)   textoFinal += `🎸 SHAPES E MAPAS ACORDES:\n• ${shapes.join(', ')}\n\n`;
+        if (metas.length > 0)    textoFinal += `🎯 METAS DE FIXAÇÃO PARA A SEMANA:\n• ${metas.join('\n• ')}\n\n`;
+
+        document.getElementById('editor-texto-final').value = textoFinal;
+        document.getElementById('box-editor-relatorio').classList.remove('hidden');
+        document.getElementById('box-editor-relatorio').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /* =============================================
+       SALVAR AULA + PDF
+       FIX #1: acervos salvos por aluno
+       FIX #3: planejamento salvo separado
+    ============================================= */
+
+    function salvarAulaEAbrirPDF() {
+        const alunoId  = document.getElementById('relatorio-aluno-select').value;
+        const aluno    = dbAlunos.find(a => a.id === alunoId);
+        const dataAula = document.getElementById('r-data').value;
+        const textoFinal = document.getElementById('editor-texto-final').value;
+
+        // FIX #3: captura o planejamento separado
+        const planejamento = document.getElementById('r-planejamento').value.trim();
+
+        // FIX #1: salva voicings no acervo do aluno
+        if (!alunoVoicings[alunoId]) alunoVoicings[alunoId] = {};
+        let voicingsNomesAula = [];
+        document.querySelectorAll('#container-voicings > div').forEach(row => {
+            const nome = row.querySelector('.voicing-nome').value.trim();
+            const md   = row.querySelector('.voicing-md').value.trim();
+            const me   = row.querySelector('.voicing-me').value.trim();
+            if (nome) {
+                if (!alunoVoicings[alunoId][nome]) {
+                    alunoVoicings[alunoId][nome] = { md, me, status: 'desenvolvendo' };
+                }
+                voicingsNomesAula.push(nome);
+            }
+        });
+        salvarAlunoVoicings();
+
+        // FIX #1: salva shapes no acervo do aluno
+        if (!alunoAcordes[alunoId]) alunoAcordes[alunoId] = {};
+        let shapesCapturadosParaPDF = [];
+        let shapesNomesAula = [];
+        document.querySelectorAll('#container-shapes > div').forEach(row => {
+            const nome     = row.querySelector('.shape-nome').value.trim();
+            if (nome) {
+                const matrix     = JSON.parse(row.dataset.matrix);
+                const strings    = JSON.parse(row.dataset.strings);
+                const numStrings = parseInt(row.dataset.numStrings) || strings.length || 6;
+                const barreFret  = row.querySelector('.shape-barre-fret').value;
+                const barreTo    = row.querySelector('.shape-barre-to').value;
+                const startSel   = row.querySelector('.shape-start-fret');
+                const startFret  = startSel ? parseInt(startSel.value) : 1;
+                if (!alunoAcordes[alunoId][nome]) {
+                    alunoAcordes[alunoId][nome] = { matrix, strings, numStrings, barreFret, barreTo, startFret, status: 'desenvolvendo' };
+                }
+                shapesCapturadosParaPDF.push({ nome, matrix, strings, numStrings, barreFret, barreTo, startFret });
+                shapesNomesAula.push(nome);
+            }
+        });
+        salvarAlunoAcordes();
+
+        // FIX #1: salva músicas no repertório do aluno (sem duplicatas)
+        if (!alunoRepertorios[alunoId]) alunoRepertorios[alunoId] = [];
+        let musicasNomes = [];
+        document.querySelectorAll('.musica-nome').forEach(i => { if (i.value.trim()) musicasNomes.push(i.value.trim()); });
+        musicasNomes.forEach(nome => {
+            if (!alunoRepertorios[alunoId].find(r => r.nome === nome)) {
+                alunoRepertorios[alunoId].push({ nome, status: 'desenvolvendo' });
+            }
+        });
+        salvarAlunoRepertorios();
+
+        let links = [];
+        document.querySelectorAll('#container-links > div').forEach(row => {
+            const titulo = row.querySelector('.link-titulo').value.trim();
+            const url    = row.querySelector('.link-url').value.trim();
+            if (titulo && url) links.push({titulo, url});
+        });
+
+        let assuntosNomes = [];
+        document.querySelectorAll('#container-assuntos > div').forEach(row => {
+            const nome = row.querySelector('.assunto-nome').value.trim();
+            if (nome) assuntosNomes.push(nome);
+        });
+
+        // FIX #3: salva planejamento separado na aula
+        const novaAula = {
+            id: Date.now().toString(),
+            alunoId, dataAula,
+            data: dataAula,
+            resumo: textoFinal,
+            planejamento,          // ← campo separado
+            assuntos: assuntosNomes,
+            musicas:  musicasNomes,
+            shapes:   shapesNomesAula,
+            voicings: voicingsNomesAula
+        };
+        dbAulas.push(novaAula);
+        salvarAulaDB(novaAula);
+
+        // Mapa de conhecimento: inicializa novos assuntos
+        if (!mapaConhecimento[alunoId]) mapaConhecimento[alunoId] = {};
+        assuntosNomes.forEach(ass => {
+            if (!mapaConhecimento[alunoId][ass]) mapaConhecimento[alunoId][ass] = 'desenvolvendo';
+        });
+        salvarMapaGlobal(alunoId);
+
+        atualizarDatalists();
+
+        // ── MONTAGEM DO PDF ──
+        let htmlShapesPDF = "";
+        if (shapesCapturadosParaPDF.length > 0) {
+            htmlShapesPDF = `<div style="margin-top:20px;font-family:sans-serif;"><h3 style="font-weight:bold;font-size:14px;border-bottom:2px solid #d97706;padding-bottom:4px;color:#b45309;text-transform:uppercase;margin-bottom:15px;">🎸 Diagramas de Acordes / Shapes</h3><div style="display:block;clear:both;">`;
+            shapesCapturadosParaPDF.forEach(sh => {
+                const nStr = sh.numStrings || (sh.strings ? sh.strings.length : 6);
+                const startFret = sh.startFret || 1;
+                const pSpacingX = 25;
+                const boardW = (nStr - 1) * pSpacingX;
+                let topRowHtml = "";
+                // Mantém a MESMA ordem do editor: leftmost = strings[0]
+                for (let c = 0; c < nStr; c++) {
+                    const xLeft = c * pSpacingX;
+                    topRowHtml += `<div style="position:absolute;left:${xLeft}px;top:0;transform:translateX(-50%);width:20px;text-align:center;font-weight:bold;font-size:12px;color:#4b5563;">${(sh.strings&&sh.strings[c])||'O'}</div>`;
+                }
+                let fingersHtml = "";
+                if (parseInt(sh.barreFret) >= 1) {
+                    let bTop = (parseInt(sh.barreFret)-1)*35+17.5;
+                    let bWidth = (parseInt(sh.barreTo)-1)*pSpacingX+6;
+                    fingersHtml += `<div style="position:absolute;background-color:#1e293b;height:10px;border-radius:5px;top:${bTop}px;left:-3px;width:${bWidth}px;z-index:15;"></div>`;
+                }
+                for (let casa = 0; casa < 4; casa++) {
+                    let centroTop = casa*35+17.5;
+                    for (let cv = 0; cv < nStr; cv++) {
+                        let cr = (nStr-1)-cv; let dedo = sh.matrix[casa] && sh.matrix[casa][cr];
+                        if (dedo) {
+                            let xLeft = cv*pSpacingX;
+                            fingersHtml += `<div style="position:absolute;background-color:#1e293b;color:#fff;font-weight:bold;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;top:${centroTop}px;left:${xLeft}px;margin-top:-10px;margin-left:-10px;z-index:20;">${dedo}</div>`;
+                        }
+                    }
+                }
+                const nutHtml = startFret === 1
+                    ? `<div style="position:absolute;left:0;right:0;height:4px;background-color:#1e293b;top:0;"></div>`
+                    : `<div style="position:absolute;left:0;right:0;height:1px;background-color:#9ca3af;top:0;"></div>`;
+                const startLabelHtml = startFret > 1
+                    ? `<div style="position:absolute;left:-26px;top:10px;font-weight:bold;font-size:11px;color:#b45309;">${startFret}fr</div>`
+                    : '';
+                const vStrings = Array.from({length:nStr},(_,i)=>i*pSpacingX);
+                htmlShapesPDF += `<div style="width:${Math.max(200, boardW+75)}px;height:240px;float:left;margin-right:20px;margin-bottom:20px;background-color:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:15px;box-sizing:border-box;"><div style="font-weight:bold;font-size:16px;color:#1f2937;margin-bottom:10px;text-align:center;">${sh.nome}</div><div style="position:relative;width:${boardW+4}px;height:20px;margin-left:35px;margin-bottom:5px;">${topRowHtml}</div><div style="position:relative;width:${boardW+4}px;height:140px;border-bottom:1px solid #4b5563;margin-left:35px;">${startLabelHtml}${nutHtml}<div style="position:absolute;left:0;right:0;height:1px;background-color:#9ca3af;top:35px;"></div><div style="position:absolute;left:0;right:0;height:1px;background-color:#9ca3af;top:70px;"></div><div style="position:absolute;left:0;right:0;height:1px;background-color:#9ca3af;top:105px;"></div>${vStrings.map(x=>`<div style="position:absolute;top:0;bottom:0;width:1px;background-color:#4b5563;left:${x}px;"></div>`).join('')}${fingersHtml}</div></div>`;
+            });
+            htmlShapesPDF += `<div style="clear:both;"></div></div></div>`;
+        }
+
+        let htmlLinksPDF = "";
+        if (links.length > 0) {
+            htmlLinksPDF = `<div style="margin-top:20px;font-family:sans-serif;"><h3 style="font-weight:bold;font-size:14px;border-bottom:2px solid #0891b2;padding-bottom:4px;color:#0e7490;text-transform:uppercase;">🔗 Links Compartilhados</h3><div style="margin-top:10px;">${links.map(l=>`<div style="padding:10px;background:#ecfeff;border:1px solid #cffafe;border-radius:8px;font-size:12px;color:#164e63;margin-bottom:5px;"><strong>${l.titulo}:</strong> <span style="text-decoration:underline;">${l.url}</span></div>`).join('')}</div></div>`;
+        }
+
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`<html><head><title>Guia_${aluno.nomePdf||aluno.nome}</title>
+        <style>body{background-color:#f3f4f6;padding:25px;font-family:sans-serif}.pdf-card{max-width:800px;margin:0 auto;background:#fff;padding:30px;border-radius:16px;border:1px solid #e5e7eb}@media print{.no-print{display:none!important}body{background:white;padding:0}.pdf-card{border:none;padding:0}}</style>
+        </head><body><div class="pdf-card">
+        <div class="no-print" style="background:#f9fafb;padding:15px;border-radius:12px;border:1px solid #e5e7eb;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;color:#6b7280;font-weight:500">Impressão do Roteiro de Aula Semanal</span><button onclick="window.print()" style="background:#2563eb;color:#fff;font-weight:bold;padding:8px 16px;border-radius:8px;border:none;font-size:12px;cursor:pointer">Confirmar Impressão / Salvar PDF</button></div>
+        <div style="border-b:4px solid #2563eb;padding-bottom:12px;display:flex;justify-content:space-between;align-items:flex-end;"><div><h1 style="font-size:20px;font-weight:bold;text-transform:uppercase;margin:0;color:#1f2937">Guia de Estudo Semanal</h1><p style="font-size:12px;color:#9ca3af;margin:4px 0 0 0">Instruções Práticas de Música</p></div><div style="text-align:right;font-size:12px;color:#9ca3af"><p style="margin:0"><strong>Data da Aula:</strong> ${dataAula.split('-').reverse().join('/')}</p></div></div>
+        <div style="display:flex;justify-content:space-between;background:#f9fafb;padding:12px;border-radius:8px;font-size:12px;border:1px solid #f3f4f6;margin-top:15px;margin-bottom:15px;"><div style="width:48%"><p style="margin:3px 0"><strong>Aluno(a):</strong> ${aluno.nomePdf||aluno.nome}</p><p style="margin:3px 0"><strong>Instrumento:</strong> ${aluno.instrumento}</p></div><div style="width:48%"><p style="margin:3px 0"><strong>Modalidade:</strong> ${aluno.modalidade}</p><p style="margin:3px 0"><strong>Professor:</strong> Well</p></div></div>
+        <div style="margin-top:15px;"><h3 style="font-size:14px;font-weight:bold;border-bottom:2px solid #2563eb;padding-bottom:4px;color:#2563eb;text-transform:uppercase;margin-bottom:10px;">📋 Resumo Prático</h3><p style="font-size:13px;white-space:pre-line;color:#374151;line-height:1.6;margin:0">${textoFinal}</p></div>
+        ${htmlShapesPDF}${htmlShapesPDF?'<div style="clear:both;"></div>':''}${htmlLinksPDF}
+        </div></body></html>`);
+        printWindow.document.close();
+
+        // Aviso DEPOIS de gerar o PDF — permite voltar para editar caso algo esteja errado
+        setTimeout(() => {
+            const finalizar = confirm(
+                "PDF gerado em uma nova aba! ✅\n\n" +
+                "Confira o PDF. Está tudo certo?\n\n" +
+                "✅ OK            → Finalizar e voltar ao início.\n" +
+                "✋ Cancelar   → Continuar nesta página para editar as informações."
+            );
+            if (finalizar) switchTab('inicio');
+        }, 300);
+    }
+
+    /* =============================================
+       EVOLUÇÃO MENSAL
+    ============================================= */
+
+    function imprimirEvolucaoMensal(alunoId) {
+        const aluno = dbAlunos.find(a => a.id === alunoId);
+        if (!aluno) return;
+        const aulas = dbAulas.filter(au => au.alunoId === alunoId);
+        const pWin = window.open('', '_blank');
+        pWin.document.write(`<html><head><title>Evolução_${aluno.nomePdf||aluno.nome}</title>
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script></head>
+        <body class="bg-white p-8 text-gray-800 font-sans"><div class="max-w-3xl mx-auto border p-8 rounded-xl shadow-xs space-y-6">
+        <div class="flex justify-between items-center border-b pb-4"><div><h1 class="text-2xl font-bold text-indigo-950">Relatório de Evolução Mensal</h1><p class="text-xs text-gray-400">Acompanhamento e Métricas de Desempenho</p></div><button onclick="window.print()" class="bg-indigo-600 text-white font-bold text-xs py-2 px-4 rounded no-print">Imprimir Prontuário</button></div>
+        <div class="bg-slate-50 p-4 rounded-lg text-xs grid grid-cols-2 gap-2 border"><p><strong>Aluno:</strong> ${aluno.nome}</p><p><strong>Instrumento:</strong> ${aluno.instrumento} (${aluno.nivel})</p></div>
+        <div class="space-y-4"><h3 class="font-bold text-sm text-indigo-900 border-b pb-1">📋 Histórico de Aulas Ministradas</h3>
+        ${aulas.length===0?'<p class="text-xs italic text-gray-400">Nenhum registro de aula lançado.</p>':aulas.map(au=>`<div class="p-3 bg-gray-50 border rounded-lg text-xs"><p class="font-bold text-gray-700 mb-1">Aula - Data: ${au.data.split('-').reverse().join('/')}</p><p class="text-gray-600 whitespace-pre-line">${au.resumo}</p></div>`).join('')}
+        </div></div></body></html>`);
+        pWin.document.close();
+    }
+
+    /* =============================================
+       DASHBOARD
+    ============================================= */
+
+    function atualizarDashboard() {
+        const hoje = new Date();
+        const nomeMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        const diasSemana = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+        document.getElementById('dash-data-hoje').innerText = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${nomeMeses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+        document.getElementById('dash-total-alunos').innerText      = dbAlunos.length;
+        document.getElementById('dash-total-aulas').innerText       = dbAulas.length;
+        document.getElementById('dash-total-assuntos').innerText    = globalAssuntos.length;
+        // Conta repertórios únicos somando todos os alunos
+        const totalRep = new Set(Object.values(alunoRepertorios).flatMap(arr => arr.map(r => r.nome))).size;
+        document.getElementById('dash-total-repertorios').innerText = totalRep;
+
+        // Últimas aulas
+        const ulDiv = document.getElementById('dash-ultimas-aulas');
+        if (dbAulas.length === 0) {
+            ulDiv.innerHTML = '<p class="text-xs text-gray-400 italic text-center py-6">Nenhuma aula registrada ainda.</p>';
+        } else {
+            const ultimas = [...dbAulas].sort((a,b) => new Date(b.data)-new Date(a.data)).slice(0, 10);
+            ulDiv.innerHTML = ultimas.map(au => {
+                const aluno = dbAlunos.find(a => a.id === au.alunoId);
+                const nomeAluno = aluno ? (aluno.nomePdf||aluno.nome) : 'Aluno removido';
+                const inst = aluno ? aluno.instrumento : '';
+                return `<div class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition cursor-pointer" onclick="verPerfilAluno('${au.alunoId}')"><div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold flex-shrink-0">${nomeAluno.charAt(0)}</div><div class="flex-1 min-w-0"><span class="block text-sm font-semibold text-gray-800 truncate">${nomeAluno}</span><span class="text-xs text-gray-400">${inst}</span></div><span class="text-xs text-gray-400 flex-shrink-0">${au.data.split('-').reverse().join('/')}</span></div>`;
+            }).join('');
+        }
+
+        // Alunos sem aula recente
+        const semAulaDiv = document.getElementById('dash-alunos-sem-aula');
+        const limite = new Date(); limite.setDate(limite.getDate()-14);
+        const semAula = dbAlunos.filter(aluno => {
+            const aulasAluno = dbAulas.filter(au => au.alunoId === aluno.id);
+            if (aulasAluno.length === 0) return true;
+            const ultima = new Date(Math.max(...aulasAluno.map(au => new Date(au.data))));
+            return ultima < limite;
+        });
+        if (semAula.length === 0) {
+            semAulaDiv.innerHTML = '<p class="text-xs text-gray-400 italic text-center py-2">Todos os alunos tiveram aula recentemente. ✅</p>';
+        } else {
+            semAulaDiv.innerHTML = semAula.map(aluno => `<div class="flex items-center gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100 cursor-pointer hover:bg-amber-100 transition" onclick="verPerfilAluno('${aluno.id}')"><i class="fa-solid fa-circle-exclamation text-amber-500 text-xs"></i><span class="text-xs font-semibold text-amber-900">${aluno.nomePdf||aluno.nome}</span><span class="text-[10px] text-amber-600 ml-auto">${aluno.instrumento}</span></div>`).join('');
+        }
+
+        // Top assuntos
+        const assuntosDiv = document.getElementById('dash-top-assuntos');
+        const contagemAss = {};
+        dbAulas.forEach(au => { (au.assuntos||[]).forEach(ass => { contagemAss[ass] = (contagemAss[ass]||0)+1; }); });
+        const topAss = Object.entries(contagemAss).sort((a,b) => b[1]-a[1]).slice(0, 6);
+        if (topAss.length === 0) {
+            assuntosDiv.innerHTML = '<p class="text-xs text-gray-400 italic text-center py-2">Nenhum assunto registrado ainda.</p>';
+        } else {
+            const max = topAss[0][1];
+            assuntosDiv.innerHTML = topAss.map(([ass, count]) => {
+                const pct = Math.round((count/max)*100);
+                return `<div><div class="flex justify-between items-center mb-0.5"><span class="text-xs text-gray-700 font-medium truncate">${ass}</span><span class="text-[10px] text-gray-400 ml-2 flex-shrink-0">${count}x</span></div><div class="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-orange-400 rounded-full" style="width:${pct}%"></div></div></div>`;
+            }).join('');
+        }
+
+        // Distribuição por instrumento
+        const distDiv = document.getElementById('dash-distribuicao');
+        if (dbAlunos.length === 0) {
+            distDiv.innerHTML = '<p class="text-xs text-gray-400 italic col-span-full text-center py-2">Nenhum aluno cadastrado.</p>';
+        } else {
+            const porInst = {};
+            dbAlunos.forEach(al => {
+                if (!porInst[al.instrumento]) porInst[al.instrumento] = { total:0, iniciante:0, intermediario:0, avancado:0 };
+                porInst[al.instrumento].total++;
+                if (al.nivel==='Iniciante') porInst[al.instrumento].iniciante++;
+                else if (al.nivel==='Intermediário') porInst[al.instrumento].intermediario++;
+                else porInst[al.instrumento].avancado++;
+            });
+            const icones = { 'Piano':'🎹','Teclado':'🎹','Violão':'🎸','Guitarra':'🎸','Ukulele':'🪕','Baixo':'🎸' };
+            distDiv.innerHTML = Object.entries(porInst).map(([inst, dados]) => `
+                <div class="bg-slate-50 rounded-xl border border-gray-100 p-4 text-center">
+                    <div class="text-2xl mb-1">${icones[inst]||'🎵'}</div>
+                    <div class="text-xs font-bold text-gray-700">${inst}</div>
+                    <div class="text-2xl font-bold text-gray-900 my-1">${dados.total}</div>
+                    <div class="space-y-0.5 text-[10px] text-gray-500">
+                        ${dados.iniciante>0?`<div>🟢 Iniciante: ${dados.iniciante}</div>`:''}
+                        ${dados.intermediario>0?`<div>🟡 Interm.: ${dados.intermediario}</div>`:''}
+                        ${dados.avancado>0?`<div>🔵 Avançado: ${dados.avancado}</div>`:''}
+                    </div>
+                </div>`).join('');
+        }
+    }
+
+    /* =============================================
+       GUIA RÁPIDO
+    ============================================= */
+
+    function abrirGuiaRapido() {
+        const select = document.getElementById('guia-aluno-select');
+        select.innerHTML = '<option value="">-- Selecione o Aluno --</option>';
+        dbAlunos.filter(a => !a.pausado).forEach(aluno => {
+            select.innerHTML += `<option value="${aluno.id}">${aluno.nomePdf||aluno.nome} (${aluno.instrumento})</option>`;
+        });
+        document.getElementById('modal-guia-rapido').classList.remove('hidden');
+    }
+
+    function gerarGuiaRapidoPDF() {
+        const alunoId = document.getElementById('guia-aluno-select').value;
+        if (!alunoId) return alert('Selecione um aluno!');
+        const aluno   = dbAlunos.find(a => a.id === alunoId);
+        const conteudo= document.getElementById('guia-conteudo').value.trim();
+        const musica  = document.getElementById('guia-musica').value.trim();
+        const meta    = document.getElementById('guia-meta').value.trim();
+        const obs     = document.getElementById('guia-obs').value.trim();
+        const hoje    = new Date().toLocaleDateString('pt-BR');
+        const pWin = window.open('', '_blank');
+        pWin.document.write(`<html><head><title>Guia_Rapido_${aluno.nomePdf||aluno.nome}</title>
+        <style>body{font-family:sans-serif;background:#f8fafc;padding:30px}.card{background:white;border-radius:14px;border:1px solid #e5e7eb;padding:28px;max-width:600px;margin:0 auto}.no-print{background:#f1f5f9;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}@media print{.no-print{display:none!important}body{background:white;padding:0}.card{border:none}}</style>
+        </head><body><div class="card">
+        <div class="no-print"><span style="font-size:12px;color:#64748b">Guia Rápido de Aula</span><button onclick="window.print()" style="background:#2563eb;color:white;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Imprimir / Salvar PDF</button></div>
+        <div style="border-left:5px solid #2563eb;padding-left:14px;margin-bottom:20px"><h1 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">Guia de Aula — ${hoje}</h1><p style="color:#64748b;font-size:13px;margin:4px 0 0 0">Aluno(a): <strong>${aluno.nomePdf||aluno.nome}</strong> · ${aluno.instrumento} · ${aluno.nivel}</p></div>
+        ${conteudo?`<div style="margin-bottom:16px;padding:14px;background:#eff6ff;border-radius:10px;border:1px solid #bfdbfe"><strong style="font-size:12px;text-transform:uppercase;color:#1d4ed8;display:block;margin-bottom:6px">📚 Conteúdo da Aula</strong><p style="font-size:14px;color:#1e3a8a;margin:0">${conteudo}</p></div>`:''}
+        ${musica?`<div style="margin-bottom:16px;padding:14px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0"><strong style="font-size:12px;text-transform:uppercase;color:#15803d;display:block;margin-bottom:6px">🎵 Música Trabalhada</strong><p style="font-size:14px;color:#14532d;margin:0">${musica}</p></div>`:''}
+        ${meta?`<div style="margin-bottom:16px;padding:14px;background:#fff7ed;border-radius:10px;border:1px solid #fed7aa"><strong style="font-size:12px;text-transform:uppercase;color:#c2410c;display:block;margin-bottom:6px">🎯 Meta da Semana</strong><p style="font-size:14px;color:#7c2d12;margin:0">${meta}</p></div>`:''}
+        ${obs?`<div style="padding:14px;background:#fafafa;border-radius:10px;border:1px solid #e5e7eb"><strong style="font-size:12px;text-transform:uppercase;color:#475569;display:block;margin-bottom:6px">💡 Observações</strong><p style="font-size:14px;color:#334155;margin:0">${obs}</p></div>`:''}
+        <p style="font-size:10px;color:#94a3b8;text-align:center;margin-top:20px">MaestroGestão · Professor Well</p>
+        </div></body></html>`);
+        pWin.document.close();
+        document.getElementById('modal-guia-rapido').classList.add('hidden');
+    }
+</script>
+</body>
+</html>
