@@ -462,6 +462,18 @@
                 <div><label class="block text-xs font-medium text-gray-600 mb-1">Objetivos a Curto/Longo Prazo</label><input type="text" id="a-objetivo" class="w-full p-2 border border-gray-300 rounded text-sm"></div>
             </div>
             <div><label class="block text-xs font-medium text-gray-600 mb-1">Como conheceu as aulas / Observações de Nivelamento</label><textarea id="a-como-chegou" rows="2" class="w-full p-2 border border-gray-300 rounded text-sm"></textarea></div>
+            <h4 class="font-bold text-xs text-blue-600 uppercase tracking-wider border-b pb-1">Mensalidade</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Vencimento — Dia inicial</label>
+                    <input type="number" id="a-venc-inicio" min="1" max="31" placeholder="Ex: 5" class="w-full p-2 border border-gray-300 rounded text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Vencimento — Dia final</label>
+                    <input type="number" id="a-venc-fim" min="1" max="31" placeholder="Ex: 11" class="w-full p-2 border border-gray-300 rounded text-sm">
+                </div>
+            </div>
+            <p class="text-[11px] text-gray-400 -mt-2">💡 Deixe em branco para alunos <strong>Apadrinhados</strong> (sem cobrança de mensalidade).</p>
             <div class="pt-4 border-t flex justify-end gap-2">
                 <button type="button" onclick="closeModalAluno()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">Cancelar</button>
                 <button type="submit" class="bg-blue-600 text-white px-5 py-2 rounded text-sm font-medium hover:bg-blue-700 transition">Salvar Registro</button>
@@ -972,7 +984,9 @@
             estilos:    document.getElementById('a-estilos').value,
             objetivo:   document.getElementById('a-objetivo').value,
             comoChegou: document.getElementById('a-como-chegou').value,
-            foto:       document.getElementById('a-foto-base64').value
+            foto:       document.getElementById('a-foto-base64').value,
+            vencInicio: document.getElementById('a-venc-inicio').value ? parseInt(document.getElementById('a-venc-inicio').value) : null,
+            vencFim:    document.getElementById('a-venc-fim').value    ? parseInt(document.getElementById('a-venc-fim').value)    : null
         };
         const index = dbAlunos.findIndex(a => a.id === id);
         if (index >= 0) dbAlunos[index] = novoAluno;
@@ -1007,6 +1021,8 @@
         document.getElementById('a-estilos').value      = aluno.estilos || '';
         document.getElementById('a-objetivo').value     = aluno.objetivo || '';
         document.getElementById('a-como-chegou').value  = aluno.comoChegou || '';
+        document.getElementById('a-venc-inicio').value = aluno.vencInicio || '';
+        document.getElementById('a-venc-fim').value    = aluno.vencFim    || '';
         if (aluno.foto) {
             document.getElementById('a-foto-base64').value = aluno.foto;
             document.getElementById('a-foto-preview').src  = aluno.foto;
@@ -1462,6 +1478,7 @@
                     <div class="bg-slate-50 p-3 rounded-xl border border-gray-100 text-xs text-gray-500">
                         <strong>💡 Como chegou:</strong> <span>${aluno.comoChegou || 'Não informado'}</span>
                     </div>
+                    ${renderBlocoMensalidade(aluno)}
                     <div class="flex flex-col gap-2">
                         <button onclick="imprimirEvolucaoMensal('${aluno.id}')" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-xs">📊 Imprimir Evolução Mensal</button>
                         <button onclick="gerarResumoMes('${aluno.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-xs">📋 Resumo do Mês para o Aluno</button>
@@ -1509,25 +1526,7 @@
                         <i class="fa-solid fa-clock-rotate-left text-purple-500"></i> Histórico de Aulas
                     </h4>
                     <div class="mt-3 space-y-2 max-h-[600px] overflow-y-auto pr-1">
-                        ${aulasAluno.length === 0
-                            ? `<p class="text-xs text-gray-400 italic text-center py-8">Nenhum registro de aula localizado para este aluno.</p>`
-                            : [...aulasAluno].sort((a,b) => new Date(b.data)-new Date(a.data)).map(au => `
-                                <div class="border border-gray-200 rounded-xl overflow-hidden text-xs bg-slate-50">
-                                    <div class="aula-accordion-header bg-slate-100 p-2.5 font-bold text-slate-700 flex justify-between items-center border-b">
-                                        <span onclick="toggleAcordeonAula(this.parentElement)" class="flex-1 cursor-pointer">📅 Aula — ${au.data.split('-').reverse().join('/')}</span>
-                                        <div class="flex items-center gap-2">
-                                            <button onclick="confirmarExcluirAula('${au.id}', '${au.data}')" class="text-red-400 hover:text-red-600 hover:bg-red-50 rounded p-1 transition" title="Excluir esta aula">
-                                                <i class="fa-solid fa-trash text-xs"></i>
-                                            </button>
-                                            <i class="fa-solid fa-chevron-down aula-accordion-chevron text-gray-400 cursor-pointer" onclick="toggleAcordeonAula(this.parentElement.parentElement)"></i>
-                                        </div>
-                                    </div>
-                                    <div class="aula-accordion-body p-3 text-slate-600 whitespace-pre-line bg-white leading-relaxed font-sans">
-                                        ${au.resumo}
-                                    </div>
-                                </div>
-                            `).join('')
-                        }
+                        ${renderHistoricoAgrupado(aulasAluno)}
                     </div>
                 </div>
             </div>
@@ -1538,6 +1537,145 @@
         if (isTeclas) renderAcervoVoicings(aluno.id);
         else          renderAcervoAcordes(aluno.id);
         renderRepertorioAluno(aluno.id);
+    }
+
+    // ── MENSALIDADE ──
+    function renderBlocoMensalidade(aluno) {
+        // Sem datas = Apadrinhado
+        if (!aluno.vencInicio || !aluno.vencFim) {
+            return `
+                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center gap-2">
+                    <span class="text-base">🤝</span>
+                    <div><strong class="block">Aluno Apadrinhado</strong><span class="text-emerald-600">Sem cobrança de mensalidade</span></div>
+                </div>`;
+        }
+
+        const hoje = new Date();
+        const dia  = hoje.getDate();
+        const mesAtual = hoje.getMonth();
+        const anoAtual = hoje.getFullYear();
+
+        // Chave de controle: ano+mes para saber se já foi marcado como pago neste ciclo
+        const cicloChave = `mens_${aluno.id}_${anoAtual}_${mesAtual+1}`;
+        const statusSalvo = localStorage.getItem(cicloChave) || 'pendente';
+
+        let statusLabel, statusClass, icone, descricao;
+
+        if (statusSalvo === 'pago') {
+            statusLabel = 'Pago';
+            statusClass = 'bg-green-100 border-green-300 text-green-800';
+            icone = '✅';
+            descricao = 'Mensalidade recebida este mês.';
+        } else if (dia >= aluno.vencInicio && dia <= aluno.vencFim) {
+            statusLabel = 'No Prazo';
+            statusClass = 'bg-blue-100 border-blue-300 text-blue-800';
+            icone = '🕐';
+            descricao = `Dentro do período de vencimento (dia ${aluno.vencInicio}–${aluno.vencFim}).`;
+        } else if (dia > aluno.vencFim) {
+            statusLabel = 'Em Atraso';
+            statusClass = 'bg-red-100 border-red-300 text-red-800';
+            icone = '⚠️';
+            descricao = `Venceu dia ${aluno.vencFim}. Verificar pagamento.`;
+        } else {
+            statusLabel = 'Pendente';
+            statusClass = 'bg-yellow-100 border-yellow-300 text-yellow-800';
+            icone = '💰';
+            descricao = `Vence entre os dias ${aluno.vencInicio} e ${aluno.vencFim}.`;
+        }
+
+        const proximoStatus = statusSalvo === 'pago' ? 'pendente' : 'pago';
+        const btnLabel = statusSalvo === 'pago' ? 'Marcar como Pendente' : 'Marcar como Pago';
+
+        return `
+            <div class="border rounded-xl p-3 text-xs ${statusClass} space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold flex items-center gap-1.5">${icone} Mensalidade — ${statusLabel}</span>
+                </div>
+                <p class="opacity-80">${descricao}</p>
+                <button onclick="alterarStatusMensalidade('${aluno.id}', '${cicloChave}', '${proximoStatus}')"
+                    class="mt-1 w-full text-center font-semibold py-1.5 rounded-lg bg-white/60 hover:bg-white/90 border border-current/20 transition text-[11px]">
+                    ${btnLabel}
+                </button>
+            </div>`;
+    }
+
+    function alterarStatusMensalidade(alunoId, cicloChave, novoStatus) {
+        localStorage.setItem(cicloChave, novoStatus);
+        // Re-renderiza o perfil para atualizar o bloco
+        verPerfilAluno(alunoId);
+    }
+
+    // ── HISTÓRICO AGRUPADO POR MÊS/ANO ──
+    function renderHistoricoAgrupado(aulasAluno) {
+        if (aulasAluno.length === 0) {
+            return `<p class="text-xs text-gray-400 italic text-center py-8">Nenhum registro de aula localizado para este aluno.</p>`;
+        }
+        const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+        // Agrupa por ano+mês
+        const grupos = {};
+        [...aulasAluno].sort((a,b) => new Date(b.data)-new Date(a.data)).forEach(au => {
+            const [ano, mes] = au.data.split('-');
+            const chave = `${ano}-${mes}`;
+            if (!grupos[chave]) grupos[chave] = { ano, mes: parseInt(mes), aulas: [] };
+            grupos[chave].aulas.push(au);
+        });
+
+        // Ordena grupos mais recentes primeiro
+        const chavesOrdenadas = Object.keys(grupos).sort((a,b) => b.localeCompare(a));
+        const anoAtual = new Date().getFullYear().toString();
+
+        return chavesOrdenadas.map(chave => {
+            const g = grupos[chave];
+            const nomeMes = MESES[g.mes - 1];
+            const label = g.ano === anoAtual ? nomeMes : `${nomeMes} ${g.ano}`;
+            const qtd = g.aulas.length;
+            const idGrupo = `grupo-mes-${chave.replace('-','')}`;
+
+            const aulasHtml = g.aulas.map(au => `
+                <div class="border border-gray-200 rounded-xl overflow-hidden text-xs bg-slate-50 mb-1.5">
+                    <div class="aula-accordion-header bg-slate-100 p-2.5 font-bold text-slate-700 flex justify-between items-center border-b">
+                        <span onclick="toggleAcordeonAula(this.parentElement)" class="flex-1 cursor-pointer">📅 Aula — ${au.data.split('-').reverse().join('/')}</span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="confirmarExcluirAula('${au.id}', '${au.data}')" class="text-red-400 hover:text-red-600 hover:bg-red-50 rounded p-1 transition" title="Excluir esta aula">
+                                <i class="fa-solid fa-trash text-xs"></i>
+                            </button>
+                            <i class="fa-solid fa-chevron-down aula-accordion-chevron text-gray-400 cursor-pointer" onclick="toggleAcordeonAula(this.parentElement.parentElement)"></i>
+                        </div>
+                    </div>
+                    <div class="aula-accordion-body p-3 text-slate-600 whitespace-pre-line bg-white leading-relaxed font-sans">
+                        ${au.resumo}
+                    </div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="mes-grupo rounded-xl overflow-hidden border border-purple-200 bg-purple-50 mb-2">
+                    <button onclick="toggleMesGrupo('${idGrupo}')" class="w-full flex items-center justify-between p-2.5 text-left hover:bg-purple-100 transition">
+                        <span class="flex items-center gap-2 font-bold text-xs text-purple-800">
+                            <i class="fa-solid fa-folder text-purple-400"></i>
+                            ${label}
+                        </span>
+                        <span class="flex items-center gap-2">
+                            <span class="bg-purple-200 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full">${qtd} aula${qtd > 1 ? 's' : ''}</span>
+                            <i id="chevron-${idGrupo}" class="fa-solid fa-chevron-down text-purple-400 text-xs transition-transform"></i>
+                        </span>
+                    </button>
+                    <div id="${idGrupo}" class="mes-grupo-body hidden px-2 pb-2 pt-1">
+                        ${aulasHtml}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function toggleMesGrupo(id) {
+        const body = document.getElementById(id);
+        const chevron = document.getElementById('chevron-' + id);
+        if (!body) return;
+        const isOpen = !body.classList.contains('hidden');
+        body.classList.toggle('hidden', isOpen);
+        if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
     }
 
     function toggleAcordeonAula(el) {
