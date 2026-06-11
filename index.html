@@ -920,6 +920,27 @@
             const badgePausado = pausado
                 ? `<span class="px-2 py-1 rounded bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">⏸ Pausado</span>`
                 : '';
+
+            // Badge mensalidade no card
+            let badgeMens = '';
+            if (!aluno.vencInicio || !aluno.vencFim) {
+                badgeMens = `<span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">🤝 Apadrinhado</span>`;
+            } else {
+                const _hoje = new Date();
+                const _dia  = _hoje.getDate();
+                const _ciclo = `mens_${aluno.id}_${_hoje.getFullYear()}_${_hoje.getMonth()+1}`;
+                const _status = localStorage.getItem(_ciclo) || 'pendente';
+                if (_status === 'pago') {
+                    badgeMens = `<span class="px-2 py-1 rounded bg-green-100 text-green-700 text-[10px] font-bold">✅ Pago</span>`;
+                } else if (_dia > aluno.vencFim) {
+                    badgeMens = `<span class="px-2 py-1 rounded bg-red-100 text-red-700 text-[10px] font-bold">⚠️ Atraso</span>`;
+                } else if (_dia >= aluno.vencInicio) {
+                    badgeMens = `<span class="px-2 py-1 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">🕐 No Prazo</span>`;
+                } else {
+                    badgeMens = `<span class="px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-[10px] font-bold">💰 Pendente</span>`;
+                }
+            }
+
             card.innerHTML = `
                 <div>
                     <div class="flex justify-between items-start mb-3">
@@ -927,6 +948,7 @@
                         <div class="flex flex-col items-end gap-1">
                             <span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-semibold">${aluno.instrumento}</span>
                             ${badgePausado}
+                            ${badgeMens}
                         </div>
                     </div>
                     <h3 class="text-base md:text-lg font-bold text-gray-900">${aluno.nomePdf || aluno.nome}</h3>
@@ -1200,9 +1222,10 @@
         let fingers = '';
         const bf = parseInt(sh.barreFret);
         if (bf >= 1) {
-            const bTop = (bf - 1) * rowH + rowH/2;
+            const bTop   = (bf - 1) * rowH + rowH/2;
             const bWidth = (parseInt(sh.barreTo) - 1) * pSpacingX + 4;
-            fingers += `<div style="position:absolute;background:#1e293b;height:7px;border-radius:4px;top:${bTop}px;left:-2px;width:${bWidth}px;transform:translateY(-50%);z-index:15;"></div>`;
+            const bLeft  = (nStr - parseInt(sh.barreTo)) * pSpacingX - 2;
+            fingers += `<div style="position:absolute;background:#1e293b;height:7px;border-radius:4px;top:${bTop}px;left:${bLeft}px;width:${bWidth}px;transform:translateY(-50%);z-index:15;"></div>`;
         }
         for (let casa = 0; casa < 4; casa++) {
             const cTop = casa * rowH + rowH/2;
@@ -1861,11 +1884,25 @@
         document.getElementById('container-repertorio').appendChild(div);
     }
 
+    function autoPreencherVoicing(inputEl) {
+        const nome = inputEl.value.trim();
+        const alunoId = document.getElementById('relatorio-aluno-select').value;
+        if (!alunoId || !nome) return;
+        const voicings = alunoVoicings[alunoId] || {};
+        const salvo = voicings[nome];
+        if (!salvo) return;
+        const row = inputEl.parentElement;
+        const mdEl = row.querySelector('.voicing-md');
+        const meEl = row.querySelector('.voicing-me');
+        if (mdEl && salvo.md) mdEl.value = salvo.md;
+        if (meEl && salvo.me) meEl.value = salvo.me;
+    }
+
     function adicionarVoicingRow() {
         const div = document.createElement('div');
         div.className = "flex flex-col md:flex-row gap-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-200";
         div.innerHTML = `
-            <input type="text" list="datalist-voicings" placeholder="Nome do Voicing" class="voicing-nome p-2 bg-white border rounded text-sm md:w-1/4">
+            <input type="text" list="datalist-voicings" placeholder="Nome do Voicing" class="voicing-nome p-2 bg-white border rounded text-sm md:w-1/4" oninput="autoPreencherVoicing(this)">
             <input type="text" placeholder="Mão Direita (MD)" class="voicing-md p-2 bg-white border rounded text-sm flex-1">
             <input type="text" placeholder="Mão Esquerda (ME)" class="voicing-me p-2 bg-white border rounded text-sm flex-1">
             <button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2 self-center">✕</button>`;
@@ -1966,9 +2003,10 @@
             fretboard.innerHTML += `<div class="string-line" style="left: ${c * stringSpacing}px;"></div>`;
         }
         if (barreFret >= 1 && barreFret <= 4) {
-            let barreTop = (barreFret - 1) * 40 + 20;
+            let barreTop   = (barreFret - 1) * 40 + 20;
             let barreWidth = (barreTo - 1) * stringSpacing + 6;
-            fretboard.innerHTML += `<div class="absolute bg-slate-800 rounded-full h-3" style="top:${barreTop}px; left:-3px; width:${barreWidth}px; transform:translateY(-50%); z-index:15; opacity:0.95;"></div>`;
+            let barreLeft  = (numStrings - barreTo) * stringSpacing - 3;
+            fretboard.innerHTML += `<div class="absolute bg-slate-800 rounded-full h-3" style="top:${barreTop}px; left:${barreLeft}px; width:${barreWidth}px; transform:translateY(-50%); z-index:15; opacity:0.95;"></div>`;
         }
         for (let casa = 0; casa < 4; casa++) {
             let centroCasaTop = casa * 40 + 20;
@@ -2219,9 +2257,10 @@
                 }
                 let fingersHtml = "";
                 if (parseInt(sh.barreFret) >= 1) {
-                    let bTop = (parseInt(sh.barreFret)-1)*35+17.5;
+                    let bTop   = (parseInt(sh.barreFret)-1)*35+17.5;
                     let bWidth = (parseInt(sh.barreTo)-1)*pSpacingX+6;
-                    fingersHtml += `<div style="position:absolute;background-color:#1e293b;height:10px;border-radius:5px;top:${bTop}px;left:-3px;width:${bWidth}px;z-index:15;"></div>`;
+                    let bLeft  = (nStr - parseInt(sh.barreTo))*pSpacingX - 3;
+                    fingersHtml += `<div style="position:absolute;background-color:#1e293b;height:10px;border-radius:5px;top:${bTop}px;left:${bLeft}px;width:${bWidth}px;z-index:15;"></div>`;
                 }
                 for (let casa = 0; casa < 4; casa++) {
                     let centroTop = casa*35+17.5;
